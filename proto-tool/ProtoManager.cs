@@ -6,10 +6,35 @@ using System.Collections.Generic;
 
 namespace proto
 {
+    class Target
+    {
+        internal string name;
+        internal string dir { get { return config["dir"]; } }
+        internal Dictionary<string, string> config = new Dictionary<string, string>();
+
+        public void parse(string param)
+        {
+            if(param != null && param.Length != 0)
+            {
+                string[] tokens = param.Split(new char[] { ';' }, StringSplitOptions.RemoveEmptyEntries);
+                foreach (var token in tokens)
+                {
+                    string[] datas = token.Split(new char[] { '=' }, StringSplitOptions.RemoveEmptyEntries);
+                    if (datas.Length != 2)
+                        continue;
+                    config.Add(datas[0], datas[1]);
+                }
+            }
+            if(config["dir"] == null)
+            {
+                config["dir"] = "./";
+            }
+        }
+    }
     class ProtoManager
     {
         Dictionary<string, IProtoPlugin> m_plugins = new Dictionary<string, IProtoPlugin>();
-        Dictionary<string, string> m_targets = new Dictionary<string, string>();
+        Dictionary<string, Target> m_targets = new Dictionary<string, Target>();
         HashSet<string> m_input = new HashSet<string>();
         List<Proto> m_protos = new List<Proto>();
 
@@ -59,9 +84,15 @@ namespace proto
                         }
                         else if(reader.Name == "target")
                         {
-                            string name = reader.GetAttribute("name");
+                            Target target = new Target();
+                            target.name = reader.GetAttribute("name");
+                            string param = reader.GetAttribute("param");
+                            target.parse(param);
                             string dir = reader.GetAttribute("dir");
-                            AddTarget(name, dir);
+                            if (dir != null)
+                                target.config["dir"] = dir;
+                            if (target.name != null)
+                                m_targets.Add(target.name, target);
                         }
                     }
                 }
@@ -75,11 +106,6 @@ namespace proto
         {
             if(Directory.Exists(dir))
                 m_input.Add(dir);
-        }
-
-        public void AddTarget(string target, string directory)
-        {
-            m_targets.Add(target, directory);
         }
 
         public void Process()
@@ -152,30 +178,30 @@ namespace proto
 
         void Output()
         {
-            if (m_targets.Count == 0)
-                m_targets.Add("cpp", "./proto-cpp");
             foreach (var kv in m_targets)
             {
-                string directory = kv.Value;
+                Target target = kv.Value;
                 var plugin = m_plugins[kv.Key];
                 if (plugin == null)
                     continue;
                 IProtoWriter writer = plugin.CreateProtoWriter();
                 //  创建目录
-                if (!Directory.Exists(directory))
+                if (!Directory.Exists(target.dir))
                 {
-                    Directory.CreateDirectory(directory);
+                    Directory.CreateDirectory(target.dir);
                 }
                 // 输出每个文件
                 foreach (var proto in m_protos)
                 {
-                    writer.Write(proto, directory);
+                    writer.Write(proto, target.config);
                 }
 
                 // 输出Manager
                 IManagerWriter manager_writer = plugin.CreateManagerWriter();
                 if (manager_writer != null)
-                    manager_writer.Write(m_protos, directory);
+                {
+                    manager_writer.Write(m_protos, target.config);
+                }
             }
         }
     }

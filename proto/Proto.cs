@@ -7,6 +7,8 @@ namespace proto
     public enum FieldType
     {
         BOOL,
+        INT,
+        UINT,
         INT8,
         UINT8,
         INT16,
@@ -54,15 +56,21 @@ namespace proto
         {
             switch (str)
             {
-                case "bool": return FieldType.BOOL;
-                case "int8": return FieldType.INT8;
-                case "int16": return FieldType.INT16;
-                case "int32": return FieldType.INT32;
-                case "int64": return FieldType.INT64;
-                case "uint8": return FieldType.UINT8;
-                case "uint16": return FieldType.UINT16;
-                case "uint32": return FieldType.UINT32;
-                case "uint64": return FieldType.UINT64;
+                case "bool":    return FieldType.BOOL;
+                case "int":     return FieldType.INT;
+                case "uint":    return FieldType.UINT;
+                case "int8":    return FieldType.INT8;
+                case "int16":   return FieldType.INT16;
+                case "int32":   return FieldType.INT32;
+                case "int64":   return FieldType.INT64;
+                case "uint8":   return FieldType.UINT8;
+                case "uint16":  return FieldType.UINT16;
+                case "uint32":  return FieldType.UINT32;
+                case "uint64":  return FieldType.UINT64;
+                case "float":   return FieldType.FLOAT32;
+                case "float32": return FieldType.FLOAT32;
+                case "double":  return FieldType.FLOAT64;
+                case "float64": return FieldType.FLOAT64;
                 case "string": return FieldType.STRING;
                 case "blob": return FieldType.BLOB;
                 default: return FieldType.STRUCT;
@@ -73,13 +81,30 @@ namespace proto
     public class Field
     {
         public string name;
-        public uint index = 0;    // 唯一索引
+        public uint index = UInt32.MaxValue;    // 唯一索引
         // struct info
+        public uint tag = 0;
         public TypeInfo key;
         public TypeInfo value;
         public Container container = Container.NONE;
         public bool pointer = false;    // 是否是指针,c++中构造析构
         public bool deprecated = false; // 是否废弃
+
+        internal int tokenSize
+        {
+            get
+            {
+                switch(container)
+                {
+                    case Container.NONE: return 2;
+                    case Container.MAP:
+                    case Container.HASH_MAP:
+                        return 4;
+                    default:
+                        return 3;
+                }
+            }
+        }
 
         public static Container ParseContainer(string str)
         {
@@ -107,12 +132,40 @@ namespace proto
 
         internal void process()
         {
-            // 默认从0开始
+            if (fields.Count == 0)
+                return;
+            // 默认从1开始,而且如果是struct，index必须大于0
+            if (fields[0].index == UInt32.MaxValue)
+                fields[0].index = 1;
             // 自动累加索引
-            for(int i = 1; i < fields.Count; ++i)
+            for (int i = 1; i < fields.Count; ++i)
             {
-                if(fields[i].index != 0)
+                if (fields[i].index == UInt32.MaxValue)
                     fields[i].index = fields[i - 1].index + 1;
+            }
+            // 保证递增性
+            if (type == CmdType.STRUCT)
+            {
+                if (fields[0].index == 0)
+                    throw new Exception("struct index must start from 1,cannot equal 0");
+                for (int i = 1; i < fields.Count; ++i)
+                {
+                    if (fields[i].index <= fields[i - 1].index)
+                        throw new Exception("struct index must be increase");
+                }
+            }
+            // 计算tag,即偏移
+            Field field;
+            uint index = 0;
+            for(int i = 0; i < fields.Count; ++i)
+            {
+                field = fields[i];
+                if (field.deprecated)
+                    continue;
+                field.tag = field.index - index;
+                index = field.index;
+                if (field.tag == 0)
+                    throw new Exception("bad tag");
             }
         }
     }
@@ -150,7 +203,7 @@ namespace proto
      *      string  name;
      *      int     ivalue;
      *      uint    uvalue=10;
-     *      vector<int> aa;
+     *      delete vector<int> aa;
      *      map<int,string> bb;
      *      hash_map<int, Person> cc;
      * }
@@ -271,55 +324,72 @@ namespace proto
         private Field ParseStructField(string data, int line)
         {
             Field field = new Field();
-             
-            // (type) name [= index]
+            string[] tokens;
+            // (deprecated) (container)type name (= index)
             string type_name;
             if (data.IndexOf('=') != -1)
             {
-                string[] tokens = data.Split(new char[] { '=' }, StringSplitOptions.RemoveEmptyEntries);
-                if (tokens.Length == 2)
-                {
-                    if (tokens[1] == "delete" || tokens[1] == "deprecated")
-                        field.deprecated = true;
-                    else
-                        field.index = UInt32.Parse(tokens[1]);
-                }
+                tokens = data.Split(new char[] { '=' }, StringSplitOptions.RemoveEmptyEntries);
+                field.index = UInt32.Parse(tokens[1]);
                 type_name = tokens[0].Trim();
             }
             else
             {
                 type_name = data;
             }
-            // parse type name
-            // 首先解析名字，必然存在
-            int index = type_name.LastIndexOf(' ');
-            if (index == -1)
-                throw new Exception("bad struct field" + line + data);
-            field.name = type_name.Substring(index);
-            // 判断是否可选，指针
-            if (type_name[index - 1] == '*')
+            // check deprecated
+            if(type_name.StartsWith("deprecated "))
             {
+                field.deprecated = true;
+                type_name = type_name.Substring("deprecated ".Length);
+            }
+            // parse type name
+            int index = type_name.LastIndexOf('*');
+            if (index != -1)
                 field.pointer = true;
-                --index;
+            // 解析类型和name,最后一个必然是name
+            tokens = type_name.Split(new char[] { ' ', '<', ',', '>', '*' }, StringSplitOptions.RemoveEmptyEntries);
+            if (tokens.Length < 2)
+                throw new Exception("bad field");
+            field.container = Field.ParseContainer(tokens[0]);
+            if(tokens.Length != field.tokenSize)
+                throw new Exception("bad field");
+            field.name = tokens[tokens.Length - 1];
+            field.value.SetName(tokens[tokens.Length - 2]);
+            if(field.container == Container.MAP || field.container == Container.HASH_MAP)
+            {
+                field.key.SetName(tokens[1]);
             }
-            // 获得类型信息 
-            string type = type_name.Substring(0, index).Trim();
-            if (type[type.Length - 1] != '>')
-            {// not container
-                field.value.SetName(type);
-            }
-            else
-            {// need check count
-                string[] tokens = type_name.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
-                field.container = Field.ParseContainer(tokens[0]);
-                if (field.container == Container.NONE || tokens[1] != "<")
-                    throw new Exception("bad struct field" + line + data);
-                field.value.SetName(tokens[tokens.Length - 3]);
-                if (field.container == Container.HASH_MAP || field.container == Container.HASH_SET)
-                {
-                    field.key.SetName(tokens[2]);
-                }
-            }
+
+            // 首先解析名字，必然存在
+            //int index = type_name.LastIndexOf(' ');
+            //if (index == -1)
+            //    throw new Exception("bad struct field" + line + data);
+            //field.name = type_name.Substring(index);
+            //// 判断是否可选，指针
+            //if (type_name[index - 1] == '*')
+            //{
+            //    field.pointer = true;
+            //    --index;
+            //}
+            //// 获得类型信息 
+            //string type = type_name.Substring(0, index).Trim();
+            //if (type[type.Length - 1] != '>')
+            //{// not container
+            //    field.value.SetName(type);
+            //}
+            //else
+            //{// need check count
+            //    string[] tokens = type_name.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            //    field.container = Field.ParseContainer(tokens[0]);
+            //    if (field.container == Container.NONE || tokens[1] != "<")
+            //        throw new Exception("bad struct field" + line + data);
+            //    field.value.SetName(tokens[tokens.Length - 3]);
+            //    if (field.container == Container.HASH_MAP || field.container == Container.HASH_SET)
+            //    {
+            //        field.key.SetName(tokens[2]);
+            //    }
+            //}
             return field;
         }
     }

@@ -1,18 +1,22 @@
 ﻿using System;
 using System.IO;
+using System.Collections.Generic;
 
 namespace proto
 {
     public abstract class ProtoWriter : IProtoWriter
     {
+        protected Dictionary<string, string> m_config;
         protected Proto m_proto;
         protected string m_output;
         protected StreamWriter m_writer;
         // 后缀名,无需包含.
         public abstract string Extension { get; }
 
-        public virtual void Write(Proto proto, string directory)
+        public virtual void Write(Proto proto, Dictionary<string, string> config)
         {
+            string directory = config["dir"];
+            m_config = config;
             m_proto = proto;
             m_output = String.Format("{0}/{1}.{2}", directory, proto.Name, Extension);
             m_writer = new StreamWriter(File.Open(m_output, FileMode.Create));
