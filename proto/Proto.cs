@@ -7,15 +7,15 @@ namespace proto
     public enum FieldType
     {
         BOOL,
-        INT,
+        SINT,
         UINT,
-        INT8,
+        SINT8,
         UINT8,
-        INT16,
+        SINT16,
         UINT16,
-        INT32,
+        SINT32,
         UINT32,
-        INT64,
+        SINT64,
         UINT64,
         FLOAT32,
         FLOAT64,
@@ -57,12 +57,16 @@ namespace proto
             switch (str)
             {
                 case "bool":    return FieldType.BOOL;
-                case "int":     return FieldType.INT;
+                case "int":     return FieldType.SINT;
                 case "uint":    return FieldType.UINT;
-                case "int8":    return FieldType.INT8;
-                case "int16":   return FieldType.INT16;
-                case "int32":   return FieldType.INT32;
-                case "int64":   return FieldType.INT64;
+                case "int8":    return FieldType.SINT8;
+                case "int16":   return FieldType.SINT16;
+                case "int32":   return FieldType.SINT32;
+                case "int64":   return FieldType.SINT64;
+                case "sint8":   return FieldType.SINT8;
+                case "sint16":  return FieldType.SINT16;
+                case "sint32":  return FieldType.SINT32;
+                case "sint64":  return FieldType.SINT64;
                 case "uint8":   return FieldType.UINT8;
                 case "uint16":  return FieldType.UINT16;
                 case "uint32":  return FieldType.UINT32;
@@ -129,6 +133,11 @@ namespace proto
         public string id_name;   // 唯一id，可以是数字，或者是unique
         public string id_owner;
         public List<Field> fields = new List<Field>();
+
+        public bool HasID
+        {
+            get { return !string.IsNullOrEmpty(id_name); }
+        }
 
         internal void process()
         {
@@ -210,8 +219,9 @@ namespace proto
      */
     public class Proto
     {
-        string m_name;     // 不含路径
-        string m_path;     // 文件路径
+        string m_name;      // 不含路径
+        string m_path;      // 文件路径
+        bool m_hasPacket;   // 是否含有packet判断标准是id不为空
         List<String>  m_imports = new List<string>();       // 注意不包含proto后缀
         List<Message> m_messages = new List<Message>();
 
@@ -223,6 +233,11 @@ namespace proto
         public string FilePath
         {
             get { return m_path; }
+        }
+
+        public bool HasPacket
+        {
+            get { return m_hasPacket; }
         }
 
         public List<String> Imports { get { return m_imports; } }
@@ -279,6 +294,20 @@ namespace proto
                 }
                 ParseFields(message, reader);
                 message.process();
+                Process();
+            }
+        }
+
+        private void Process()
+        {
+            m_hasPacket = false;
+            foreach(var msg in m_messages)
+            {
+                if(msg.HasID)
+                {
+                    m_hasPacket = true;
+                    break;
+                }
             }
         }
 
@@ -348,7 +377,7 @@ namespace proto
             if (index != -1)
                 field.pointer = true;
             // 解析类型和name,最后一个必然是name
-            tokens = type_name.Split(new char[] { ' ', '<', ',', '>', '*' }, StringSplitOptions.RemoveEmptyEntries);
+            tokens = type_name.Split(new char[] { ' ', '<', ',', '>', '*', ':' }, StringSplitOptions.RemoveEmptyEntries);
             if (tokens.Length < 2)
                 throw new Exception("bad field");
             field.container = Field.ParseContainer(tokens[0]);
@@ -361,35 +390,6 @@ namespace proto
                 field.key.SetName(tokens[1]);
             }
 
-            // 首先解析名字，必然存在
-            //int index = type_name.LastIndexOf(' ');
-            //if (index == -1)
-            //    throw new Exception("bad struct field" + line + data);
-            //field.name = type_name.Substring(index);
-            //// 判断是否可选，指针
-            //if (type_name[index - 1] == '*')
-            //{
-            //    field.pointer = true;
-            //    --index;
-            //}
-            //// 获得类型信息 
-            //string type = type_name.Substring(0, index).Trim();
-            //if (type[type.Length - 1] != '>')
-            //{// not container
-            //    field.value.SetName(type);
-            //}
-            //else
-            //{// need check count
-            //    string[] tokens = type_name.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
-            //    field.container = Field.ParseContainer(tokens[0]);
-            //    if (field.container == Container.NONE || tokens[1] != "<")
-            //        throw new Exception("bad struct field" + line + data);
-            //    field.value.SetName(tokens[tokens.Length - 3]);
-            //    if (field.container == Container.HASH_MAP || field.container == Container.HASH_SET)
-            //    {
-            //        field.key.SetName(tokens[2]);
-            //    }
-            //}
             return field;
         }
     }

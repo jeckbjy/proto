@@ -25,9 +25,18 @@ namespace proto
                     config.Add(datas[0], datas[1]);
                 }
             }
-            if(config["dir"] == null)
+            if(!config.ContainsKey("dir"))
             {
-                config["dir"] = "./";
+                config.Add("dir", "./");
+            }
+            else if(!config["dir"].EndsWith("/"))
+            {
+                config["dir"] = config["dir"] + "/";
+            }
+
+            if(!config.ContainsKey("mgr"))
+            {
+                config.Add("mgr", "PacketFactory");
             }
         }
     }
@@ -69,36 +78,30 @@ namespace proto
 
         void LoadConfig()
         {// 解析配置文件
-            try
+            XmlTextReader reader = new XmlTextReader("./config.xml");
+            while (reader.Read())
             {
-                XmlTextReader reader = new XmlTextReader("./config.xml");
-                while(reader.Read())
+                if (reader.NodeType == XmlNodeType.Element)
                 {
-                    if(reader.NodeType == XmlNodeType.Element)
+                    if (reader.Name == "input")
                     {
-                        if(reader.Name == "input")
-                        {
-                            string dir = reader.GetAttribute("dir");
-                            if (dir.Length != 0)
-                                AddInputDir(dir);
-                        }
-                        else if(reader.Name == "target")
-                        {
-                            Target target = new Target();
-                            target.name = reader.GetAttribute("name");
-                            string param = reader.GetAttribute("param");
-                            target.parse(param);
-                            string dir = reader.GetAttribute("dir");
-                            if (dir != null)
-                                target.config["dir"] = dir;
-                            if (target.name != null)
-                                m_targets.Add(target.name, target);
-                        }
+                        string dir = reader.GetAttribute("dir");
+                        if (dir.Length != 0)
+                            AddInputDir(dir);
+                    }
+                    else if (reader.Name == "target")
+                    {
+                        Target target = new Target();
+                        target.name = reader.GetAttribute("name");
+                        string param = reader.GetAttribute("param");
+                        target.parse(param);
+                        string dir = reader.GetAttribute("dir");
+                        if (dir != null)
+                            target.config["dir"] = dir;
+                        if (target.name != null)
+                            m_targets.Add(target.name, target);
                     }
                 }
-            }
-            catch(Exception)
-            {
             }
         }
 

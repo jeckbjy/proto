@@ -1,11 +1,19 @@
-﻿namespace proto
+﻿using System;
+namespace proto
 {
     class Program
     {
         static void Main(string[] args)
         {
-            ProtoManager manager = new ProtoManager();
-            manager.Process();
+            try
+            {
+                ProtoManager manager = new ProtoManager();
+                manager.Process();
+            }
+            catch(Exception e)
+            {
+                Console.WriteLine(e.ToString());
+            }
         }
     }
 }

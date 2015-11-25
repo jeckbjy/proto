@@ -19,8 +19,7 @@ namespace plugin_cpp
 
         public IManagerWriter CreateManagerWriter()
         {
-            return null;
-            //return new CppManagerWriter();
+            return new CppManagerWriter();
         }
     }
 }
