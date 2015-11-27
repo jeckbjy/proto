@@ -14,9 +14,14 @@ namespace plugin_cpp
             }
         }
 
+        public override void BeginWrite()
+        {
+            base.BeginWrite();
+            m_writer.WriteLine("#include \"CodeStream.h\"");
+        }
+
         public override void WriteImport(string import)
         {
-            m_writer.WriteLine("#include \"CodeStream.h\"");
             m_writer.WriteLine(String.Format("#include \"{0}.h\"", import));
         }
 

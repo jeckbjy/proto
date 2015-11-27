@@ -29,7 +29,8 @@ namespace proto
             {
                 config.Add("dir", "./");
             }
-            else if(!config["dir"].EndsWith("/"))
+            
+            if(!config["dir"].EndsWith("/"))
             {
                 config["dir"] = config["dir"] + "/";
             }
@@ -94,10 +95,10 @@ namespace proto
                         Target target = new Target();
                         target.name = reader.GetAttribute("name");
                         string param = reader.GetAttribute("param");
-                        target.parse(param);
                         string dir = reader.GetAttribute("dir");
                         if (dir != null)
                             target.config["dir"] = dir;
+                        target.parse(param);
                         if (target.name != null)
                             m_targets.Add(target.name, target);
                     }

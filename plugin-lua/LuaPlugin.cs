@@ -1,5 +1,4 @@
-﻿using System;
-using proto;
+﻿using proto;
 
 namespace plugin_lua
 {
@@ -13,14 +12,14 @@ namespace plugin_lua
             }
         }
 
-        public IManagerWriter CreateManagerWriter()
-        {
-            throw new NotImplementedException();
-        }
-
         public IProtoWriter CreateProtoWriter()
         {
-            throw new NotImplementedException();
+            return new LuaProtoWriter();
+        }
+
+        public IManagerWriter CreateManagerWriter()
+        {
+            return new LuaManagerWriter();
         }
     }
 }

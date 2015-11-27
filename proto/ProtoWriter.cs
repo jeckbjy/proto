@@ -15,11 +15,18 @@ namespace proto
 
         public virtual void Write(Proto proto, Dictionary<string, string> config)
         {
+            string ext;
+            if (Extension.StartsWith("."))
+                ext = Extension.Substring(1);
+            else
+                ext = Extension;
+
             string directory = config["dir"];
             m_config = config;
             m_proto = proto;
             m_output = String.Format("{0}/{1}.{2}", directory, proto.Name, Extension);
             m_writer = new StreamWriter(File.Open(m_output, FileMode.Create));
+            BeginWrite();
             // 序列化
             for (int i = 0; i < m_proto.Imports.Count; ++i)
             {
@@ -34,9 +41,12 @@ namespace proto
                 else
                     WriteStruct(msg);
             }
+            EndWrite();
             m_writer.Close();
         }
 
+        public virtual void BeginWrite() { }
+        public virtual void EndWrite() { }
         public abstract void WriteImport(string import);
         public abstract void WriteStruct(Message msg);
         public abstract void WriteEnum(Message msg);
