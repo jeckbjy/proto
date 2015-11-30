@@ -35,14 +35,16 @@ namespace plugin_lua
         public override void WriteStruct(Message msg)
         {
             m_writer.WriteLine("{0} = proto_class(\"{0}\")", msg.name);
-            m_writer.WriteLine("{0}.pt_desc = {{", msg.name);
+            if (msg.HasID)
+                m_writer.WriteLine("{0}.proto_id = {1}", msg.name, msg.id_name);
+            m_writer.WriteLine("{0}.proto_desc = {{", msg.name);
             foreach(var field in msg.fields)
             {
                 if (field.deprecated)
                     continue;
                 m_writer.WriteLine(
-                    "    [{0,-2}] = {{ name = \"{1}\", container = {2}, type = {3}, cls = {4}, key = {5},}},",
-                    field.index, field.name, GetContainer(field), GetLuaType(field.value), GetClassName(field.value), GetLuaType(field.key)
+                    "    [{0,-2}] = {{ container = {1}, type = {2, -9}, key = {3, -9}, name = \"{4}\", }},",
+                    field.index, GetContainer(field), GetLuaType(field.value), GetLuaType(field.key), field.name
                     );
             }
             m_writer.WriteLine("}");
@@ -72,8 +74,10 @@ namespace plugin_lua
         {
             switch(info.type)
             {
+                case FieldType.NONE:
+                    return "PROTO_NIL";
                 case FieldType.BOOL:
-                    return "PROTO_BOOL";
+                    return "PROTO_BLN";
                 case FieldType.SINT:
                 case FieldType.SINT8:
                 case FieldType.SINT16:
@@ -94,17 +98,11 @@ namespace plugin_lua
                 case FieldType.BLOB:
                     return "PROTO_STR";
                 case FieldType.STRUCT:
-                    return "PROTO_MSG";
+                    return info.name;
+                    //return "PROTO_MSG";
                 default:
-                    return "";
+                    return "PROTO_NIL";
             }
-        }
-
-        private string GetClassName(TypeInfo info)
-        {
-            if (info.type == FieldType.STRUCT)
-                return info.name;
-            return "nil";
         }
     }
 }

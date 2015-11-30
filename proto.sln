@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio 14
-VisualStudioVersion = 14.0.23107.0
+# Visual Studio 2013
+VisualStudioVersion = 12.0.40629.0
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "plugin-cpp", "plugin-cpp\plugin-cpp.csproj", "{C345E411-D037-45C2-A221-F6CCB19CBA9C}"
 EndProject
@@ -10,6 +10,8 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "proto", "proto\proto.csproj", "{A24AB500-5C09-483A-925C-5F7F3742AE7B}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "proto-tool", "proto-tool\proto-tool.csproj", "{5FCD3BD5-9AE9-49EB-99DF-9FD79379EDCC}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "plugin-csharp", "plugin-csharp\plugin-csharp.csproj", "{F7275F71-1FF9-432A-B19F-578C72F58BAD}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -33,6 +35,10 @@ Global
 		{5FCD3BD5-9AE9-49EB-99DF-9FD79379EDCC}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{5FCD3BD5-9AE9-49EB-99DF-9FD79379EDCC}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{5FCD3BD5-9AE9-49EB-99DF-9FD79379EDCC}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F7275F71-1FF9-432A-B19F-578C72F58BAD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F7275F71-1FF9-432A-B19F-578C72F58BAD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F7275F71-1FF9-432A-B19F-578C72F58BAD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F7275F71-1FF9-432A-B19F-578C72F58BAD}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -6,6 +6,7 @@ namespace proto
 {
     public enum FieldType
     {
+        NONE,
         BOOL,
         SINT,
         UINT,
