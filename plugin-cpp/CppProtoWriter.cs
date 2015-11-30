@@ -17,7 +17,7 @@ namespace plugin_cpp
         public override void BeginWrite()
         {
             base.BeginWrite();
-            m_writer.WriteLine("#include \"CodeStream.h\"");
+            m_writer.WriteLine("#include \"proto.h\"");
         }
 
         public override void WriteImport(string import)
@@ -54,11 +54,11 @@ namespace plugin_cpp
                 }
                 else if(field.container == Container.MAP || field.container == Container.HASH_MAP)
                 {
-                    m_writer.WriteLine(String.Format("    std::{0}<{1},{2}> {3}", GetContainerName(field.container), GetTypeName(field.key), GetTypeName(field.value), field.name));
+                    m_writer.WriteLine(String.Format("    {0}<{1}, {2}> {3}", GetContainerName(field.container), GetTypeName(field.key), GetTypeName(field.value), field.name));
                 }
                 else
                 {
-                    m_writer.WriteLine(String.Format("    std::{0}<{1}> {2}", GetContainerName(field.container), GetTypeName(field.value), field.name));
+                    m_writer.WriteLine(String.Format("    {0}<{1}> {2}", GetContainerName(field.container), GetTypeName(field.value), field.name));
                 }
             }
 
@@ -197,12 +197,12 @@ namespace plugin_cpp
         {
             switch(type)
             {
-                case Container.VECTOR: return "vector";
-                case Container.LIST: return "list";
-                case Container.MAP: return "map";
-                case Container.SET: return "set";
-                case Container.HASH_MAP: return "hash_map";
-                case Container.HASH_SET: return "hash_set";
+                case Container.LIST: return "pt_list";
+                case Container.VEC: return "pt_vec";
+                case Container.MAP: return "pt_map";
+                case Container.SET: return "pt_set";
+                case Container.HASH_MAP: return "pt_hmap";
+                case Container.HASH_SET: return "pt_hset";
                 default:
                     return "";
             }

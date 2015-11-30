@@ -37,7 +37,7 @@ namespace plugin_cpp
             string path_cpp = m_path + ".cpp";
             m_writer = new StreamWriter(File.Open(path_cpp, FileMode.Create));
             m_writer.WriteLine("#include <PacketFactory.h>");
-            m_writer.WriteLine("#include <CodeStream.h>");
+            m_writer.WriteLine("#include <proto.h>");
             // 写入头文件等
             foreach(var proto in m_protos)
             {

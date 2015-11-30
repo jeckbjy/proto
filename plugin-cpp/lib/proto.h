@@ -83,6 +83,24 @@ typedef pt_num<unsigned long long>	pt_u64;
 typedef pt_num<float>				pt_f32;
 typedef pt_num<double>				pt_f64;
 typedef std::string					pt_str;
+// stl
+template<typename T, typename Alloc = std::allocator<T> >
+using pt_vec = std::vector<T, Alloc>;
+
+template<typename T, typename Alloc = std::allocator<T> >
+using pt_list = std::list<T, Alloc>;
+
+template<typename T, typename Alloc = std::allocator<T> >
+using pt_set = std::set<T, Alloc>;
+
+template<typename T, typename Alloc = std::allocator<T> >
+using pt_hset = std::unordered_set<T, Alloc>;
+
+template<typename U, typename V, typename Alloc = std::allocator<T> >
+using pt_map = std::map<U, V, Alloc>;
+
+template<typename U, typename V, typename Alloc = std::allocator<T> >
+using pt_hmap = std::unordered_map<U, V, Alloc>;
 
 enum TrimMode
 {

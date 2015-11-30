@@ -56,7 +56,7 @@ namespace plugin_lua
             {
                 case Container.NONE: 
                     return "PROTO_NIL";
-                case Container.VECTOR:
+                case Container.VEC:
                 case Container.LIST:
                     return "PROTO_VEC";
                 case Container.SET:

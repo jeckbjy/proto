@@ -28,8 +28,8 @@ namespace proto
     public enum Container
     {
         NONE,
-        VECTOR,
         LIST,
+        VEC,
         MAP,
         SET,
         HASH_MAP,
@@ -115,7 +115,7 @@ namespace proto
         {
             switch(str)
             {
-                case "vector":return Container.VECTOR;
+                case "vector":return Container.VEC;
                 case "list":return Container.LIST;
                 case "map":return Container.MAP;
                 case "set":return Container.SET;
