@@ -1,12 +1,10 @@
-#include "CodeStream.h"
+#include "proto.h"
 #include <algorithm>
 
-#define DATA_MAX	29	// 最大值
-#define DATA_FOL	30	// 数据紧随
-#define DATA_IDX	31	// 外部索引
 // 掩码
 #define MASK_TYPE	0x80
 #define MASK_TAGS	0x60
+#define MASK_7BIT	0x10		// 7bit编码标识
 #define MASK_DATA	0x1F
 
 // 返回字节数,使用小端
@@ -402,7 +400,7 @@ void pt_encoder::encode(pt_message& msg)
 	len += len2;
 	len3 = encode_group_var(buff + len, msg.msgid());
 	len += len3;
-	flag = (len1 << 5) + (len2 << 3) + len3;
+	flag = (len1 << 5) + (len2 << 2) + len3;
 	buff[0] = flag;
 	m_stream->seek(20 - len, SEEK_BEG);
 	m_stream->discard(false);
@@ -414,11 +412,11 @@ void pt_encoder::write_tag(size_t tag, uint64_t val, bool ext)
 	// 编码规则:注意：数据区使用加减法，可以优化小数据
 	// 最高位标识类型：0：uint64，1：带有length的复杂类型
 	// 2，3位标识tag,0-2,3标识后边读取,tag至少为1，故可以先减1再保存
-	// 低5位标识数据：value:0-29直接表示，30紧随读取，31外部读取长度
+	// 低5位标识数据：0-15直接存储,剩余数据紧随或者放到index中
 	assert(tag > 0);
 	tag -= 1;
 	char flag = ext ? MASK_TYPE : 0;
-	// tag
+	// tag:占2bit
 	if (tag < 3)
 	{
 		flag |= (char)tag << 5;
@@ -429,28 +427,18 @@ void pt_encoder::write_tag(size_t tag, uint64_t val, bool ext)
 		tag |= MASK_TAGS;
 		tag -= 2;
 	}
-	// value
-	if (ext && val == 0)
-	{
-		flag |= DATA_IDX;
-	}
-	else if (val <= DATA_MAX)
-	{
-		flag |= val;
-		val = 0;
-	}
-	else
-	{// 紧随
-		flag |= DATA_FOL;
-		val -= DATA_MAX;
-	}
-	// 写入数据,要先写入tag，再写入value，因为解析时要先解析tag作为校验
+	// val:存储数据的低4位
+	flag |= (val & 0x0F);
+	val >>= 4;
+	if (val == 0)
+		flag |= 0x10;
+	// flag+tag+val
 	char buf[20];
 	size_t len = 1;
 	buf[0] = flag;
 	if (tag > 0)
 		len += encode_var(buf + 1, tag);
-	if (val > 0)
+	if (!ext && val > 0)
 		len += encode_var(buf + len, val);
 	// 写入到stream中
 	m_stream->write(buf, len);
@@ -467,21 +455,17 @@ void pt_encoder::write_end(size_t& tpos, size_t& bpos)
 {
 	size_t epos = m_stream->cursor();
 	size_t leng = epos - bpos;
-	if (leng <= DATA_MAX)
-	{
-		char flag;
-		m_stream->seek(tpos, SEEK_SET);
-		m_stream->peek(&flag, 1);
-		flag &= ~MASK_DATA;
-		flag |= (char)leng;
-		m_stream->write(&flag, 1);
-		m_stream->seek(epos);
-	}
+	char flag;
+	m_stream->seek(tpos, SEEK_SET);
+	m_stream->peek(&flag, 1);
+	flag |= (leng & 0x0F);
+	leng >>= 4;
+	if (leng == 0)
+		flag |= 0x10;
 	else
-	{// 追加到末尾
-		leng -= DATA_MAX;
 		m_indexs.push_back(leng);
-	}
+	m_stream->write(&flag, 1);
+	m_stream->seek(epos, SEEK_SET);
 }
 
 void pt_encoder::write_var(uint64_t data)
@@ -511,46 +495,69 @@ bool pt_encoder::write_field(const pt_str& data)
 {
 	if (data.empty())
 		return false;
-	write_tag(m_tag, data.size(), true);
+	size_t tpos, bpos;
+	write_beg(tpos, bpos);
 	m_stream->write(data.data(), data.size());
+	write_end(tpos, bpos);
 	return true;
-}
-
-void pt_encoder::write_data(const pt_message& msg)
-{
-	size_t cpos = m_stream->cursor();
-	m_stream->advance(1);
-	msg.encode(*this);
-	size_t epos = m_stream->cursor();
-	size_t leng = epos - cpos - 1;
-	char flag = leng & 0x7F;
-	leng >>= 7;
-	if (leng == 0)
-	{// 说明能保存
-		flag |= 0x80;
-	}
-	else
-	{// 剩余部分从索引中读取
-		m_indexs.push_back(leng);
-	}
-	// 写入tag
-	m_stream->seek(cpos, SEEK_SET);
-	m_stream->write(&flag, 1);
-	m_stream->seek(epos, SEEK_SET);
-}
-
-void pt_encoder::write_data(const pt_str& str)
-{
-	write_buf(str.c_str(), str.size());
 }
 
 //////////////////////////////////////////////////////////////////////////
 //
 //////////////////////////////////////////////////////////////////////////
-bool pt_decoder::decode_head()
+bool pt_decoder::decode(create_cb fun)
 {
-	size_t pos = m_stream->cursor();
+	if (pre_decode())
+	{
+		pt_message* msg = fun(m_msgid);
+		if (!msg)
+		{// 过滤
+			skip();
+			return false;
+		}
+		return decode(*msg);
+	}
+	return false;
+}
+bool pt_decoder::decode(pt_message& msg)
+{
+	size_t msg_len = (size_t)m_size;
+	// 头部已经被解析
+	size_t beg_pos = m_stream->cursor();
+	// 先读取index
+	if (m_offset > 0)
+	{
+		uint64_t index;
+		size_t end_pos = beg_pos + msg_len;
+		m_indexs.reserve((msg_len - m_offset) >> 2);
+		m_stream->seek(m_offset, SEEK_CUR);
+		while (m_stream->cursor() < end_pos)
+		{
+			if (!read_var(index))
+				return false;
+			m_indexs.push_back((size_t)index);
+		}
+		m_stream->seek(beg_pos, SEEK_SET);
+	}
+
+	if (m_data > 0)
+	{
+		size_t old_epos;
+		m_stream->suspend(old_epos, msg_len);
+		msg.decode(*this);
+		m_stream->recovery(old_epos);
+		// 移动到正确位置
+		m_stream->seek((long)(beg_pos + m_size), SEEK_SET);
+	}
+	m_ext = true;
+	return true;
+}
+
+bool pt_decoder::pre_decode()
+{
 	char flag;
+	uint32_t msg_len, idx_len, msg_id;
+	size_t pos = m_stream->cursor();
 	if (!m_stream->read(&flag, 1))
 		return false;
 	uint8_t buff[20];
@@ -564,51 +571,26 @@ bool pt_decoder::decode_head()
 		m_stream->seek(pos, SEEK_SET);
 		return false;
 	}
-	size_t index_size;
 	// 解析长度,data_len:index_len:msgid
-	decode_group_var(buff, m_length, len1);
-	decode_group_var(buff + len1, index_size, len2);
-	decode_group_var(buff + len1 + len2, m_msgid, len3);
-	// 校验后边数据
-	if (m_stream->space() < m_length)
+	decode_group_var(buff, msg_len, len1);
+	decode_group_var(buff + len1, idx_len, len2);
+	decode_group_var(buff + len1 + len2, msg_id, len3);
+	// 校验数据是否完整
+	if (m_stream->space() < msg_len)
 	{
 		m_stream->seek(pos, SEEK_SET);
 		return false;
 	}
-	m_offset = index_size == 0 ? 0 : m_length - index_size;
+	m_ext = true;
+	m_size = msg_len;
+	m_offset = idx_len == 0 ? 0 : msg_len - idx_len;
 	return true;
 }
 
-bool pt_decoder::decode(pt_message& msg)
+void pt_decoder::skip()
 {
-	// 头部已经被解析
-	size_t beg_pos = m_stream->cursor();
-	// 先读取index
-	if (m_offset > 0)
-	{
-		uint64_t index;
-		size_t end_pos = beg_pos + m_length;
-		m_indexs.reserve((m_length - m_offset) >> 2);
-		m_stream->seek(m_offset, SEEK_CUR);
-		while (m_stream->cursor() < end_pos)
-		{
-			if (!read_var(index))
-				return false;
-			m_indexs.push_back((size_t)index);
-		}
-		m_stream->seek(beg_pos, SEEK_SET);
-	}
-
-	if (m_length > 0)
-	{
-		size_t old_epos;
-		m_stream->suspend(old_epos, m_length);
-		msg.decode(*this);
-		m_stream->recovery(old_epos);
-		// 移动到正确位置
-		m_stream->seek((long)(beg_pos + m_length), SEEK_SET);
-	}
-	return true;
+	if (m_ext && m_data > 0)
+		m_stream->seek((long)m_size, SEEK_CUR);
 }
 
 bool pt_decoder::pre_read(size_t tag)
@@ -625,8 +607,7 @@ bool pt_decoder::pre_read(size_t tag)
 	while (tag > m_tag)
 	{
 		// skip length content
-		if (m_ext && m_data > 0)
-			m_stream->seek((long)m_data, SEEK_CUR);
+		skip();
 		if (!read_tag())
 			return false;
 	}
@@ -656,16 +637,23 @@ bool pt_decoder::read_tag()
 	}
 	m_tag += tag + 1;
 	// 解析data
-	m_data = flag & MASK_DATA;
-	if (m_data == DATA_FOL)
-	{
-		if (!read_var(temp))
-			return false;
-		m_data = temp + DATA_MAX;
-	}
-	else if (m_data == DATA_IDX && !m_indexs.empty())
-	{
-		m_data = pop_index() + DATA_MAX;
+	m_data = flag & 0x0F;
+	if (!(flag & 0x10))
+	{// 还有额外数据,两种方式读取
+		uint64_t temp;
+		if (!m_ext)
+		{
+			if (!read_var(temp))
+				return false;
+		}
+		else
+		{
+			if (m_indexs.empty())
+				return false;
+			temp = m_indexs.front();
+			m_indexs.pop_back();
+		}
+		m_data = (temp << 4) | m_data;
 	}
 
 	return true;
@@ -689,21 +677,20 @@ bool pt_decoder::read_var(uint64_t& data)
 	return true;
 }
 
-uint32_t pt_decoder::pop_index()
-{
-	if (m_indexs.empty())
-		return 0;
-	uint32_t index = m_indexs.back();
-	m_indexs.pop_back();
-	return index;
-}
-
 void pt_decoder::read_field(pt_str& data)
 {
-	if (!m_ext || !m_data)
+	if (!m_ext)
 		return;
-	data.resize((size_t)m_data);
-	m_stream->read(&data[0], (size_t)m_data);
+	size_t len = (size_t)m_size;
+	if (len)
+	{
+		data.resize(len);
+		m_stream->read(&data[0], len);
+	}
+	else
+	{
+		data.clear();
+	}
 }
 
 void pt_decoder::read_field(pt_message& msg)
@@ -711,37 +698,7 @@ void pt_decoder::read_field(pt_message& msg)
 	if (!m_ext || !m_data)
 		return;
 	size_t epos;
-	m_stream->suspend(epos, (size_t)m_data);
+	m_stream->suspend(epos, (size_t)m_size);
 	msg.decode(*this);
 	m_stream->recovery(epos);
-}
-
-void pt_decoder::read_data(pt_message& msg)
-{
-	char flag;
-	if (!m_stream->read(&flag, 1))
-		return;
-	size_t len = flag & 0x7F;
-	// 解析
-	if ((flag & 0x80) == 0)
-	{// 说明有额外数据
-		uint32_t index = pop_index();
-		len = (index << 7) + len;
-	}
-	size_t epos;
-	m_stream->suspend(epos, len);
-	msg.decode(*this);
-	m_stream->recovery(epos);
-}
-
-void pt_decoder::read_data(pt_str& data)
-{
-	uint64_t temp;
-	if (!read_var(temp))
-		return;
-	size_t len = (size_t)temp;
-	if (len == 0)
-		return;
-	data.resize(len);
-	m_stream->read(&data[0], len);
 }

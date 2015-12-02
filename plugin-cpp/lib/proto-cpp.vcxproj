@@ -77,10 +77,10 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp" />
-    <ClCompile Include="CodeStream.cpp" />
+    <ClCompile Include="proto.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="CodeStream.h" />
+    <ClInclude Include="proto.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

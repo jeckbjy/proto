@@ -1,4 +1,4 @@
-#include "CodeStream.h"
+#include "proto.h"
 #include <math.h>
 #include <iostream>
 using namespace std;
@@ -66,7 +66,7 @@ int main(int argc, char* argv[])
 
 	stream.rewind();
 	pt_decoder reader(&stream);
-	if (reader.decode_head())
+	if (reader.pre_decode())
 		reader.decode(p2);
 
 	system("pause");

@@ -6,6 +6,8 @@
 #include <map>
 #include <set>
 #include <stack>
+#include <unordered_map>
+#include <unordered_set>
 #include <string>
 #include <assert.h>
 
@@ -178,7 +180,7 @@ public:
 	void end_tag() { m_tag = m_stack.top(); m_stack.pop(); }
 
 protected:
-	typedef std::vector<uint32_t> IndexVec;
+	typedef std::vector<uint64_t> IndexVec;
 	typedef std::stack<int> Stack;
 	pt_stream*	 m_stream;
 	size_t	 m_tag;
@@ -233,21 +235,6 @@ public:// 辅助函数
 	void write_buf(const char* data, size_t len);
 	void write_var(uint64_t data);
 
-public:// for stl,不支持嵌套
-	void write_data(const pt_message& msg);
-	void write_data(const pt_str& str);
-	void write_data(const bool& data)		{ write_var(convert_to(data)); }
-	void write_data(const uint8_t& data)	{ write_var(convert_to(data)); }
-	void write_data(const uint16_t& data)	{ write_var(convert_to(data)); }
-	void write_data(const uint32_t& data)	{ write_var(convert_to(data)); }
-	void write_data(const uint64_t& data)	{ write_var(convert_to(data)); }
-	void write_data(const int8_t& data)		{ write_var(convert_to(data)); }
-	void write_data(const int16_t& data)	{ write_var(convert_to(data)); }
-	void write_data(const int32_t& data)	{ write_var(convert_to(data)); }
-	void write_data(const int64_t& data)	{ write_var(convert_to(data)); }
-	void write_data(const double& data)		{ write_var(convert_to(data)); }
-	void write_data(const float& data)		{ write_var(convert_to(data)); }
-
 public:
 	bool write_field(const pt_message& data);
 	bool write_field(const pt_str& data);
@@ -288,24 +275,28 @@ private:
 	{
 		if (data.empty())
 			return false;
+		size_t old_tag;
 		size_t tpos, bpos;
 		write_beg(tpos, bpos);
+		old_tag = m_tag;
+		m_tag = 1;
 		// 写入数据
 		typename STL::const_iterator cur_itor;
 		typename STL::const_iterator end_itor = data.end();
 		for (cur_itor = data.begin(); cur_itor != end_itor; ++cur_itor)
 		{
-			write_data(*cur_itor);
+			write_field(*cur_itor);
 		}
+		m_tag = old_tag;
 		write_end(tpos, bpos);
 		return true;
 	}
 
 	template<typename U, typename V> 
-	inline void write_data(const std::pair<U, V>& data)
+	inline void write_field(const std::pair<U, V>& data)
 	{
-		write_data(data.first);
-		write_data(data.second);
+		write_field(data.first);
+		write_field(data.second);
 	}
 };
 
@@ -327,12 +318,14 @@ class pt_decoder : public pt_codec
 	inline static void convert_from(uint64_t n, int64_t& dst)	{ dst = (int64_t)decodei64(n); }
 	inline static void convert_from(uint64_t n, double& dst)	{ dst = decodef64(n); }
 	inline static void convert_from(uint64_t n, float& dst)		{ dst = decodef32(n); }
-
+	
 public:
+	typedef pt_message* create_cb(unsigned int msgid);
 	pt_decoder(pt_stream* stream) :pt_codec(stream){}
 
-	bool decode_head();
+	bool decode(create_cb fun);
 	bool decode(pt_message& msg);
+	bool pre_decode();
 
 	template<typename T>
 	pt_decoder& read(T& data, size_t tag = 1)
@@ -351,26 +344,10 @@ public:
 
 public:
 	uint32_t msgID() const { return m_msgid; }
+	void skip();
 	bool pre_read(size_t tag);
 	bool read_tag();
 	bool read_var(uint64_t& data);
-	uint32_t pop_index();
-
-public:
-	void read_data(pt_message& data);
-	void read_data(pt_str& data);
-
-	void read_data(bool& dst)	 { read_basic(dst); }
-	void read_data(uint8_t& dst) { read_basic(dst); }
-	void read_data(uint16_t& dst){ read_basic(dst); }
-	void read_data(uint32_t& dst){ read_basic(dst); }
-	void read_data(uint64_t& dst){ read_basic(dst); }
-	void read_data(int8_t& dst)  { read_basic(dst); }
-	void read_data(int16_t& dst) { read_basic(dst); }
-	void read_data(int32_t& dst) { read_basic(dst); }
-	void read_data(int64_t& dst) { read_basic(dst); }
-	template<typename T>
-	void read_data(pt_num<T>& dst) { read_basic(dst.data); }
 
 public:
 	void read_field(pt_message& dst);
@@ -399,20 +376,12 @@ public:
 		read_field(*data);
 	}
 private:
-	template<typename T>
-	inline void read_basic(T& dst)
-	{
-		uint64_t data;
-		read_var(data);
-		convert_from(data, dst);
-	}
-
 	template<typename U, typename V>
-	inline void read_data(std::pair<const U, V>& kv)
+	inline void read_field(std::pair<const U, V>& kv)
 	{
 		U* key = const_cast<U*>(&kv.first);
-		read_data(*key);
-		read_data(kv.second);
+		read_field(*key);
+		read_field(kv.second);
 	}
 
 	template<typename T>
@@ -441,21 +410,27 @@ private:
 	{
 		if (!m_ext || !m_data)
 			return;
+		size_t old_tag = m_tag;
 		size_t epos;
-		m_stream->suspend(epos, (size_t)m_data);
+		m_stream->suspend(epos, (size_t)m_size);
 		typename STL::value_type item;
 		while (!m_stream->eof())
 		{
-			read_data(item);
+			read_tag();
+			read_field(item);
 			this->push_back(stl, item);
 		}
 		m_stream->recovery(epos);
+		m_tag = old_tag;
 	}
 
 private:
-	uint32_t m_length;
-	uint32_t m_offset;
 	uint32_t m_msgid;
-	uint64_t m_data;
+	uint32_t m_offset;
 	bool	 m_ext;
+	union
+	{
+		uint64_t m_size;	// ext:body size
+		uint64_t m_data;	// !ext: value
+	};
 };

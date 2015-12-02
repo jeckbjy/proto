@@ -68,7 +68,7 @@ struct LoginMsg = S2C_Login
 - flag用一个uint8保存：struct中的每个field都会有一个唯一id，id使用增量的方式保存在tag中，所以通常情况下tag都为0或者是一个很小的值，为了压缩tag，则按如下编码flag
 	- 最高位标识类型，0：变长uint64，1：len+content类型
 	- 高2，3位标识tag，0-2直接保存,3则表示flag后紧跟tag剩余大小
-	- 低5位标识数据信息,可以是基础结构数值，也可以是复杂结构的length，可表示范围0-29，30表示tag后紧随剩余数据，31表示长度是存储在外部的(仅嵌套的struct使用)，这样实现的好处是对于长度较小的长度(小于29)在flag中即可表示无需额外数据
+	- 低5位数据信息，var编码，最高位标识为1标识结束，故0-15可直接表示，剩余数据：如果是基本类型则紧随，如何是复杂类型，则长度在indexs中存储
 
 - 基础格式编码转换
 	- sint8先转成uint8去除符号再转成uint64
@@ -76,12 +76,13 @@ struct LoginMsg = S2C_Login
 	- sint16,sint32,sint64会使用zigzag编码转化成uint64
 	- float32内存中强转成uint32,c中实现 union { float  f; uint32_t i; }
 	- float64内存中强转成uint64,c中实现 union { double f; uint64_t i; }
-- 已知长度复杂类型：如string，使用length+content编码，且length紧随flag
+- string，blob等已知长度复杂类型：使用length+content编码
 - stl内部数据序列化：
 	- 自身使用的length+content的形式
-	- 内部序列化有两种方式,目前使用的方式2，但无论哪种方式,对于struct类型的数据都要带有length信息才能实现版本的升级，但由于不能预知长度，依然需要放入顶层struct的index列表中
+	- 内部序列化有两种方式,目前使用的方式1
 		1. 和外部的field编码一样，tag使用0表示：缺点是会浪费3个无效bit，因为tag和类型是已知的,优点是无需另实现序列化函数
 		2. 去除flag信息，无数据浪费，但缺点是需要重新写一套序列化函数
-- struct序列化：分为顶层和内部两种情况,无论哪种预先都无法知道长度，故需要额外地方存储length
-	1. 内部struct：类似string等复杂数据使用length+content形式，但区别是flag只占一个字节，大于等于30的length将会放在尾部的index索引中查询
-	2. 顶层struct：相当于一个packet：包含flag(3-3-2)+length+index+msgid+content信息,flag占1byte，标识后边紧随的length,index,msgid所占字节,length等使用小端编码，length:整个数据体大小(包含index),index:尾部索引占用字节数,msgid:消息的唯一ID,可用于反序列化
+- struct(内部struct)序列化：由于事先不知length故flag中不能容纳时需要放到索引区去获得大小
+- packet（顶层struct）序列化:head+body
+	1. head:flag(3-3-2)+msg_len+idx_len+msgid,flag占用1个字节标识后边每个数据所占用字节数，msg_len,idx_len,msgid使用小端编码
+	2. body:content+index，index由于序列化之前并不知道，故必须放到末尾

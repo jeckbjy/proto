@@ -47,6 +47,55 @@ function proto_class(name,super)
 	return cls
 end
 
+Stream = proto_class("Stream")
+
+function Stream:ctor()
+    self.spos = 0
+    self.epos = 0
+    self.cpos = 0
+    self.buff = {}
+end
+
+function Stream:write(data)
+    local len = 
+    if self.cpos > 
+end
+
+function Stream:read(len)
+end
+
+function Stream:writeBytes(data, offset, len)
+    
+end
+
+
+function encodei64(n)
+	local r = n << 1
+--	print(r)
+	if n < 0 then
+		r = r ~(-1)
+	end
+--	print("encode",r)
+	return r
+end
+
+function decodei64(n)
+	local r = (n >> 1) ~ (-(n&1))
+--	print("decode",r)
+	return r
+end
+
+function encodef64(n)
+end
+
+function decodei64(n)
+end
+
+function encodef32(n)
+end
+function decodef32(n)
+end
+
 --±àÂë
 function encode_group_var(data)
     if data == 0 then
