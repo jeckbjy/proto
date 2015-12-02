@@ -115,10 +115,11 @@ namespace proto
         {
             switch(str)
             {
-                case "vector":return Container.VEC;
-                case "list":return Container.LIST;
-                case "map":return Container.MAP;
-                case "set":return Container.SET;
+                case "list": return Container.LIST;
+                case "vector": return Container.VEC;
+                case "vec": return Container.VEC;
+                case "map": return Container.MAP;
+                case "set": return Container.SET;
                 case "hash_map":return Container.HASH_MAP;
                 case "hash_set":return Container.HASH_SET;
                 default:return Container.NONE;
@@ -138,6 +139,16 @@ namespace proto
         public bool HasID
         {
             get { return !string.IsNullOrEmpty(id_name); }
+        }
+
+        public bool IsEnum { get { return type == CmdType.ENUM; } }
+        public bool IsStruct { get { return type == CmdType.STRUCT; } }
+
+        public string GetMsgID(string split)
+        {
+            if (string.IsNullOrEmpty(split) || string.IsNullOrEmpty(id_owner))
+                return id_name;
+            return id_owner + split + id_name;
         }
 
         internal void process()

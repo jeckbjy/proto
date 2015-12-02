@@ -135,7 +135,7 @@ namespace proto
         {
             // 所有结构体或者enum,不能有重名
             Dictionary<string, Message> blocks = new Dictionary<string, Message>();
-            Dictionary<string, Field> enum_fields = new Dictionary<string, Field>();
+            Dictionary<string, string> enum_fields = new Dictionary<string, string>();
             // 先统计信息
             foreach(var proto in m_protos)
             {
@@ -151,7 +151,7 @@ namespace proto
                         {
                             if(enum_fields.ContainsKey(field.name))
                                 throw new Exception(String.Format("duplicate enum field name[{0}] in file[{1}]", field.name, proto.Name));
-                            enum_fields.Add(field.name, field);
+                            enum_fields.Add(field.name, msg.name);
                         }
                     }
                 }
@@ -164,7 +164,10 @@ namespace proto
                 {
                     if(msg.type == CmdType.STRUCT)
                     {
-                        // todo:校验ID
+                        if(msg.HasID && enum_fields.ContainsKey(msg.id_name))
+                        {
+                            msg.id_owner = enum_fields[msg.id_name];
+                        }
                         // 校验field
                         foreach(var field in msg.fields)
                         {

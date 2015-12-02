@@ -54,11 +54,11 @@ namespace plugin_cpp
                 }
                 else if(field.container == Container.MAP || field.container == Container.HASH_MAP)
                 {
-                    m_writer.WriteLine(String.Format("    {0}<{1}, {2}> {3}", GetContainerName(field.container), GetTypeName(field.key), GetTypeName(field.value), field.name));
+                    m_writer.WriteLine(String.Format("    {0}<{1}, {2}> {3};", GetContainerName(field.container), GetTypeName(field.key), GetTypeName(field.value), field.name));
                 }
                 else
                 {
-                    m_writer.WriteLine(String.Format("    {0}<{1}> {2}", GetContainerName(field.container), GetTypeName(field.value), field.name));
+                    m_writer.WriteLine(String.Format("    {0}<{1}> {2};", GetContainerName(field.container), GetTypeName(field.value), field.name));
                 }
             }
 

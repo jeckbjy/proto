@@ -55,7 +55,7 @@ namespace plugin_cpp
                     continue;
                 foreach(var msg in proto.Messages)
                 {
-                    if (!msg.HasID)
+                    if (!msg.IsStruct || !msg.HasID)
                         continue;
                     m_writer.WriteLine(String.Format("    case {0}: return new {1}();", msg.id_name, msg.name));
                 }

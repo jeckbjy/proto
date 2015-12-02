@@ -34,12 +34,12 @@ namespace proto
             }
             for (int i = 0; i < m_proto.Messages.Count; ++i)
             {
-                m_writer.WriteLine();
                 Message msg = m_proto.Messages[i];
                 if (msg.type == CmdType.ENUM)
                     WriteEnum(msg);
                 else
                     WriteStruct(msg);
+                m_writer.WriteLine();
             }
             EndWrite();
             m_writer.Close();

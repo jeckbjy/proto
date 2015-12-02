@@ -8,7 +8,7 @@ namespace plugin_csharp
         {
             get
             {
-                return "cs";
+                return "csharp";
             }
         }
 
