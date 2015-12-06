@@ -40,9 +40,9 @@
     <Compile Include="CSharpManagerWriter.cs" />
     <Compile Include="CSharpPlugin.cs" />
     <Compile Include="CSharpProtoWriter.cs" />
-    <Compile Include="lib\ModelManager.cs" />
-    <Compile Include="lib\Decoder.cs" />
-    <Compile Include="lib\Encoder.cs" />
+    <Content Include="lib\ModelManager.cs" />
+    <Content Include="lib\Decoder.cs" />
+    <Content Include="lib\Encoder.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
