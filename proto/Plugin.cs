@@ -19,6 +19,7 @@ namespace proto
     public interface IProtoPlugin
     {
         string Target { get; }
+        string Extension { get; }
         IProtoWriter    CreateProtoWriter();
         IManagerWriter  CreateManagerWriter();
     }

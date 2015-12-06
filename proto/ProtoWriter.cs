@@ -51,4 +51,24 @@ namespace proto
         public abstract void WriteStruct(Message msg);
         public abstract void WriteEnum(Message msg);
     }
+
+    public abstract class ManagerWriger : IManagerWriter
+    {
+        protected Dictionary<string, string> m_config;
+        protected List<Proto> m_protos;
+        protected StreamWriter m_writer;
+        protected string m_path;
+
+        public virtual void Write(List<Proto> protos, Dictionary<string, string> config)
+        {
+            m_config = config;
+            m_protos = protos;
+            m_path = config["dir"] + config["mgr"] + "."+ config["ext"];
+            m_writer = new StreamWriter(File.Open(m_path, FileMode.Create));
+            WriteManager();
+            m_writer.Close();
+        }
+
+        public abstract void WriteManager();
+    }
 }

@@ -191,6 +191,7 @@ namespace proto
                 var plugin = m_plugins[kv.Key];
                 if (plugin == null)
                     continue;
+                target.config["ext"] = plugin.Extension;
                 IProtoWriter writer = plugin.CreateProtoWriter();
                 //  创建目录
                 if (!Directory.Exists(target.dir))

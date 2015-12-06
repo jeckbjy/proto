@@ -12,6 +12,8 @@ namespace plugin_cpp
             }
         }
 
+        public string Extension { get { return "h"; } }
+
         public IProtoWriter CreateProtoWriter()
         {
             return new CppProtoWriter();

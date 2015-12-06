@@ -14,7 +14,6 @@ namespace plugin_cpp
         StreamWriter m_writer;
         public void Write(List<Proto> protos, Dictionary<string, string> config)
         {
-            //throw new NotImplementedException();
             m_protos = protos;
             m_file = config["mgr"];
             m_dir = config["dir"];

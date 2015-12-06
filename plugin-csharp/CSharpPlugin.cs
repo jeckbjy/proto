@@ -12,6 +12,8 @@ namespace plugin_csharp
             }
         }
 
+        public string Extension { get { return "cs"; } }
+
         public IProtoWriter CreateProtoWriter()
         {
             return new CSharpProtoWriter();

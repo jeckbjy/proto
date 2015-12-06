@@ -12,6 +12,8 @@ namespace plugin_lua
             }
         }
 
+        public string Extension { get { return "lua"; } }
+
         public IProtoWriter CreateProtoWriter()
         {
             return new LuaProtoWriter();
