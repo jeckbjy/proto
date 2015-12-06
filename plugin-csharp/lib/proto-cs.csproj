@@ -7,8 +7,8 @@
     <ProjectGuid>{F7275F71-1FF9-432A-B19F-578C72F58BAD}</ProjectGuid>
     <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
-    <RootNamespace>plugin_csharp</RootNamespace>
-    <AssemblyName>plugin-csharp</AssemblyName>
+    <RootNamespace>proto</RootNamespace>
+    <AssemblyName>proto-cs</AssemblyName>
     <TargetFrameworkVersion>v2.0</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <TargetFrameworkProfile />
@@ -17,8 +17,7 @@
     <DebugSymbols>true</DebugSymbols>
     <DebugType>full</DebugType>
     <Optimize>false</Optimize>
-    <OutputPath>..\bin\debug\</OutputPath>
-    <BaseIntermediateOutputPath>..\obj\$(Configuration)\$(Project)\</BaseIntermediateOutputPath>
+    <OutputPath>.\bin\debug\</OutputPath>
     <DefineConstants>DEBUG;TRACE</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
@@ -26,8 +25,7 @@
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
     <DebugType>pdbonly</DebugType>
     <Optimize>true</Optimize>
-    <OutputPath>..\bin\$(Configuration)\</OutputPath>
-    <BaseIntermediateOutputPath>..\obj\$(Configuration)\$(Project)\</BaseIntermediateOutputPath>
+    <OutputPath>.\bin\release\</OutputPath>
     <DefineConstants>TRACE</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
@@ -36,22 +34,13 @@
     <Reference Include="System" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="CSharpFormat.cs" />
-    <Compile Include="CSharpManagerWriter.cs" />
-    <Compile Include="CSharpPlugin.cs" />
-    <Compile Include="CSharpProtoWriter.cs" />
-    <Compile Include="lib\ModelManager.cs" />
-    <Compile Include="lib\Decoder.cs" />
-    <Compile Include="lib\Encoder.cs" />
-    <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="Decoder.cs" />
+    <Compile Include="Encoder.cs" />
+    <Compile Include="ModelManager.cs" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\proto\proto.csproj">
-      <Project>{a24ab500-5c09-483a-925c-5f7f3742ae7b}</Project>
-      <Name>proto</Name>
-    </ProjectReference>
+    <Folder Include="Properties\" />
   </ItemGroup>
-  <ItemGroup />
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
        Other similar extension points exist, see Microsoft.Common.targets.

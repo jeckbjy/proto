@@ -33,15 +33,15 @@ namespace plugin_csharp
         {
             switch(type)
             {
-                case Container.LIST:
-                    return "LinkedList";
+                case Container.LIST:    // LinkedList:不能实现反射功能
+                    //return "LinkedList";
                 case Container.VEC:
                     return "List";
                 case Container.MAP:
                     return "SortedDictionary";
                 case Container.HASH_MAP:
                     return "Dictionary";
-                case Container.SET:
+                case Container.SET:// 2.0不支持
                 case Container.HASH_SET:
                     return "HashSet";
                 default:

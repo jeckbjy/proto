@@ -17,9 +17,9 @@ namespace plugin_csharp
             writer.WriteLine("        public static void Init()");
             writer.WriteLine("        {");
             // 写入数据
-            List<string> packets = new List<string>();
-            List<string> models = new List<string>();
-            List<string> fields = new List<string>();
+            List<string> messages = new List<string>();
+            // 防止重复
+            Dictionary<string, string> fields = new Dictionary<string, string>();
             // 写入消息
             foreach(var pro in protos)
             {
@@ -27,39 +27,30 @@ namespace plugin_csharp
                 {
                     if (!msg.IsStruct)
                         continue;
-                    if(msg.HasID)
-                        packets.Add(String.Format("            ModelManager.Add({0}, delegate() {{ return new {1}(); }});", msg.GetMsgID("."), msg.name));
-                    models.Add(String.Format("            ModelManager.Add(typeof({0}), delegate() {{ return new {0}();}});", msg.name));
+                    messages.Add(String.Format("            ModelManager.Add(typeof({0}), delegate() {{ return new {0}();}});", msg.name));
                     foreach(var field in msg.fields)
                     {
                         if (field.container != Container.NONE)
-                            fields.Add(String.Format("            ModelManager.Add(typeof({0}), delegate() {{ return new {0}();}});", CSharpFormat.GetFieldType(field)));
+                        {
+                            string type = CSharpFormat.GetFieldType(field);
+                            string value = String.Format("            ModelManager.Add(typeof({0}), delegate() {{ return new {0}();}});", type);
+                            fields.Add(type, value);
+                        }
                     }
                 }
             }
-            // 写入
-            if(packets.Count > 0)
-            {
-                writer.WriteLine("            // write packet by msgID");
-                foreach (var str in packets)
-                    writer.WriteLine(str);
-                writer.WriteLine();
-            }
 
-            if(models.Count > 0)
+            if(messages.Count > 0)
             {
-                writer.WriteLine("            // write packet model");
-                foreach (var str in models)
+                foreach (var str in messages)
                     writer.WriteLine(str);
                 writer.WriteLine();
             }
 
             if(fields.Count > 0)
             {
-                writer.WriteLine("            // write fields model");
-                foreach (var str in fields)
-                    writer.WriteLine(str);
-                writer.WriteLine();
+                foreach (var kv in fields)
+                    writer.WriteLine(kv.Value);
             }
 
             writer.WriteLine("        }");

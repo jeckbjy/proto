@@ -402,7 +402,7 @@ void pt_encoder::encode(pt_message& msg)
 	len += len3;
 	flag = (len1 << 5) + (len2 << 2) + len3;
 	buff[0] = flag;
-	m_stream->seek(20 - len, SEEK_BEG);
+	m_stream->seek(bpos - len, SEEK_SET);
 	m_stream->discard(false);
 	m_stream->write(buff, len);
 }
@@ -424,7 +424,7 @@ void pt_encoder::write_tag(size_t tag, uint64_t val, bool ext)
 	}
 	else
 	{
-		tag |= MASK_TAGS;
+		flag |= MASK_TAGS;
 		tag -= 2;
 	}
 	// val:存储数据的低4位
