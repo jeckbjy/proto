@@ -1,27 +1,107 @@
 #pragma once
+
+#if __cplusplus >= 201103L
+#define HAS_CPP11
+#endif
+
 #include <stddef.h>
+#include <assert.h>
 #include <cstdint>
+#include <string>
 #include <vector>
 #include <list>
 #include <map>
 #include <set>
 #include <stack>
+#ifdef HAS_CPP11
 #include <unordered_map>
 #include <unordered_set>
-#include <string>
-#include <assert.h>
+#else
+#include <hash_map>
+#include <hash_set>
+#endif
 
-class pt_stream;
-class pt_decoder;
-class pt_encoder;
+// stl
+#ifdef HAS_CPP11
+template<typename T>
+using pt_vec = std::vector<T>;
 
-struct pt_message
+template<typename T>
+using pt_list = std::list<T>;
+
+template<typename U, typename V>
+using pt_map = std::map<U, V>;
+
+template<typename T>
+using pt_set = std::set<T>;
+
+template<typename U, typename V>
+using pt_hmap = std::unordered_map<U, V>;
+
+template<typename T>
+using pt_hset = std::unordered_set<T>;
+
+#else
+template<typename T>
+class pt_vec : public std::vector<T> {};
+
+template<typename T>
+class pt_list : public std::list<T>{};
+
+template<typename U, typename V>
+class pt_map : public std::map<U, V>{};
+
+template<typename T>
+class pt_set : public std::set<T>{};
+
+template<typename U, typename V>
+class pt_hmap : public std::hash_map<U, V>{};
+
+template<typename T>
+class pt_hset : public std::hash_set<T>{};
+
+#endif
+
+// traits 萃取
+template<bool _Test, class T = void>
+struct pt_enable_if{};
+
+template<class T>
+struct pt_enable_if<true, T> { typedef T type; };
+
+template<typename T, T val>
+struct pt_constant
 {
-	virtual ~pt_message(){}
-	virtual size_t msgid() const { return 0; }
-	virtual void decode(pt_decoder& stream) = 0;
-	virtual void encode(pt_encoder& stream) const = 0;
+	static const T value = val;
+	operator T() const { return value; }
 };
+
+typedef pt_constant<bool, true>		pt_true_type;
+typedef pt_constant<bool, false>	pt_false_type;
+
+template<typename T>
+struct pt_is_basic : pt_false_type { };
+template<> struct pt_is_basic<bool>		: pt_true_type{};
+template<> struct pt_is_basic<char>		: pt_true_type{};
+template<> struct pt_is_basic<int8_t>	: pt_true_type{};
+template<> struct pt_is_basic<int16_t>	: pt_true_type{};
+template<> struct pt_is_basic<int32_t>	: pt_true_type{};
+template<> struct pt_is_basic<int64_t>	: pt_true_type{};
+template<> struct pt_is_basic<uint8_t>	: pt_true_type{};
+template<> struct pt_is_basic<uint16_t> : pt_true_type{};
+template<> struct pt_is_basic<uint32_t> : pt_true_type{};
+template<> struct pt_is_basic<uint64_t> : pt_true_type{};
+template<> struct pt_is_basic<float>	: pt_true_type{};
+template<> struct pt_is_basic<double>	: pt_true_type{};
+
+template<typename T> 
+struct pt_is_stl : pt_false_type { };
+template<typename T> struct pt_is_stl<pt_vec<T> > : pt_true_type{};
+template<typename T> struct pt_is_stl<pt_list<T> > : pt_true_type{};
+template<typename T> struct pt_is_stl<pt_set<T> > : pt_true_type{};
+template<typename T> struct pt_is_stl<pt_hset<T> > : pt_true_type{};
+template<typename U, typename V> struct pt_is_stl<pt_map<U, V> > : pt_true_type{};
+template<typename U, typename V> struct pt_is_stl<pt_hmap<U, V> > : pt_true_type{};
 
 // 自动释放的ptr,谨慎使用
 template<typename T>
@@ -30,6 +110,9 @@ struct pt_ptr
 public:
 	pt_ptr() :m_ptr(0){}
 	~pt_ptr(){ release(); }
+
+	operator bool() const { return m_ptr; }
+	bool operator!() const { return !m_ptr; }
 
 	T* operator->() const { return m_ptr; }
 	T& operator*() const { return *m_ptr; }
@@ -85,24 +168,18 @@ typedef pt_num<unsigned long long>	pt_u64;
 typedef pt_num<float>				pt_f32;
 typedef pt_num<double>				pt_f64;
 typedef std::string					pt_str;
-// stl
-template<typename T, typename Alloc = std::allocator<T> >
-using pt_vec = std::vector<T, Alloc>;
 
-template<typename T, typename Alloc = std::allocator<T> >
-using pt_list = std::list<T, Alloc>;
+class pt_stream;
+class pt_decoder;
+class pt_encoder;
 
-template<typename T, typename Alloc = std::allocator<T> >
-using pt_set = std::set<T, Alloc>;
-
-template<typename T, typename Alloc = std::allocator<T> >
-using pt_hset = std::unordered_set<T, Alloc>;
-
-template<typename U, typename V, typename Alloc = std::allocator<T> >
-using pt_map = std::map<U, V, Alloc>;
-
-template<typename U, typename V, typename Alloc = std::allocator<T> >
-using pt_hmap = std::unordered_map<U, V, Alloc>;
+struct pt_message
+{
+	virtual ~pt_message(){}
+	virtual size_t msgid() const { return 0; }
+	virtual void decode(pt_decoder& stream) = 0;
+	virtual void encode(pt_encoder& stream) const = 0;
+};
 
 enum TrimMode
 {
@@ -171,6 +248,41 @@ private:
 	size_t	m_cpos;		// 当前位置，读写使用
 };
 
+struct pt_convert
+{
+	inline static uint64_t encodei64(int64_t n){ return (n << 1) ^ (n >> 63); }
+	inline static uint64_t encodef64(double n) { union { double f; uint64_t i; } d; d.f = n; return d.i; }
+	inline static uint64_t encodef32(float n)  { union { float  f; uint32_t i; } d; d.f = n; return d.i; }
+
+	inline static int64_t  decodei64(uint64_t n) { return (n >> 1) ^ -(int64_t)(n & 1); }
+	inline static double   decodef64(uint64_t n) { union { double f; uint64_t i; } d; d.i = n; return d.f; }
+	inline static float    decodef32(uint64_t n) { union { float  f; uint32_t i; } d; d.i = (uint32_t)n; return d.f; }
+
+	inline static uint64_t encode(const bool& n)	 { return n ? 1 : 0; }
+	inline static uint64_t encode(const uint8_t&  n) { return n; }
+	inline static uint64_t encode(const uint16_t& n) { return n; }
+	inline static uint64_t encode(const uint32_t& n) { return n; }
+	inline static uint64_t encode(const uint64_t& n) { return n; }
+	inline static uint64_t encode(const int8_t&  n)  { return (uint8_t)n; }
+	inline static uint64_t encode(const int16_t& n)  { return encodei64(n); }
+	inline static uint64_t encode(const int32_t& n)  { return encodei64(n); }
+	inline static uint64_t encode(const int64_t& n)  { return encodei64(n); }
+	inline static uint64_t encode(const double& n)	 { return encodef64(n); }
+	inline static uint64_t encode(const float& n)	 { return encodef32(n); }
+
+	inline static void decode(uint64_t n, bool& dst)	{ dst = (n != 0); }
+	inline static void decode(uint64_t n, uint8_t& dst)	{ dst = (uint8_t)n; }
+	inline static void decode(uint64_t n, uint16_t& dst){ dst = (uint16_t)n; }
+	inline static void decode(uint64_t n, uint32_t& dst){ dst = (uint32_t)n; }
+	inline static void decode(uint64_t n, uint64_t& dst){ dst = (uint64_t)n; }
+	inline static void decode(uint64_t n, int8_t& dst)	{ dst = (int8_t)(uint8_t)n; }
+	inline static void decode(uint64_t n, int16_t& dst)	{ dst = (int16_t)decodei64(n); }
+	inline static void decode(uint64_t n, int32_t& dst)	{ dst = (int32_t)decodei64(n); }
+	inline static void decode(uint64_t n, int64_t& dst)	{ dst = (int64_t)decodei64(n); }
+	inline static void decode(uint64_t n, double& dst)	{ dst = decodef64(n); }
+	inline static void decode(uint64_t n, float& dst)	{ dst = decodef32(n); }
+};
+
 class pt_codec
 {
 public:
@@ -182,7 +294,7 @@ public:
 protected:
 	typedef std::vector<uint64_t> IndexVec;
 	typedef std::stack<int> Stack;
-	pt_stream*	 m_stream;
+	pt_stream* m_stream;
 	size_t	 m_tag;
 	Stack	 m_stack;
 	IndexVec m_indexs;
@@ -191,22 +303,6 @@ protected:
 // 写入
 class pt_encoder : public pt_codec
 {
-	inline static uint64_t encodei64(int64_t n) { return (n << 1) ^ (n >> 63); }
-	inline static uint64_t encodef64(double n) { union { double f; uint64_t i; } d; d.f = n; return d.i; }
-	inline static uint64_t encodef32(float n) { union { float f; uint32_t i; } d; d.f = n; return d.i; }
-
-	inline static uint64_t convert_to(const bool& n)	 { return n ? 1 : 0; }
-	inline static uint64_t convert_to(const uint8_t&  n) { return n; }
-	inline static uint64_t convert_to(const uint16_t& n) { return n; }
-	inline static uint64_t convert_to(const uint32_t& n) { return n; }
-	inline static uint64_t convert_to(const uint64_t& n) { return n; }
-	inline static uint64_t convert_to(const int8_t&  n)  { return (uint8_t)n; }
-	inline static uint64_t convert_to(const int16_t& n)  { return encodei64(n); }
-	inline static uint64_t convert_to(const int32_t& n)  { return encodei64(n); }
-	inline static uint64_t convert_to(const int64_t& n)  { return encodei64(n); }
-	inline static uint64_t convert_to(const double& n)	 { return encodef64(n); }
-	inline static uint64_t convert_to(const float& n)	 { return encodef32(n); }
-
 public:
 	pt_encoder(pt_stream* stream) :pt_codec(stream){}
 
@@ -238,40 +334,35 @@ public:// 辅助函数
 public:
 	bool write_field(const pt_message& data);
 	bool write_field(const pt_str& data);
-	bool write_field(const bool& data)		{ return write_type(data); }
-	bool write_field(const uint8_t& data)	{ return write_type(data); }
-	bool write_field(const uint16_t& data)	{ return write_type(data); }
-	bool write_field(const uint32_t& data)	{ return write_type(data); }
-	bool write_field(const uint64_t& data)	{ return write_type(data); }
-	bool write_field(const int8_t& data)	{ return write_type(data); }
-	bool write_field(const int16_t& data)	{ return write_type(data); }
-	bool write_field(const int32_t& data)	{ return write_type(data); }
-	bool write_field(const int64_t& data)	{ return write_type(data); }
-	bool write_field(const double& data)	{ return write_type(data); }
-	bool write_field(const float& data)		{ return write_type(data); }
-	template<typename T> bool write_field(const std::vector<T>& data){ return write_stl(data); }
-	template<typename T> bool write_field(const std::list<T>& data)	 { return write_stl(data); }
-	template<typename T> bool write_field(const std::set<T>& data)	 { return write_stl(data); }
-	template<typename U, typename V> bool write_field(const std::map<U, V>& data) { return write_stl(data); }
 
-	template<typename T> bool write_field(pt_num<T>& num) { return write_field(num.data); }
-	template<typename T> bool write_field(pt_ptr<T>& data) { return write_field(*data); }
-
-private:
-	template<typename T>
-	inline bool write_type(const T& data)
+	template<typename T> 
+	bool write_field(const pt_ptr<T>& ptr) 
 	{
-		if (data)
-		{
-			write_tag(m_tag, convert_to(data), false);
-			return true;
-		}
-
+		if (ptr)
+			return write_field(*ptr);
 		return false;
 	}
-	// 编码stl
+
+	template<typename T> 
+	bool write_field(const pt_num<T>& num) 
+	{
+		return write_field(num.data); 
+	}
+
+	template<typename T>
+	typename pt_enable_if<pt_is_basic<T>::value, bool>::type
+		write_field(const T& data)
+	{
+		uint64_t tmp = pt_convert::encode(data);
+		if (tmp == 0)
+			return false;
+		write_tag(m_tag, tmp, false);
+		return true;
+	}
+
 	template<typename STL>
-	inline bool write_stl(const STL& data)
+	typename pt_enable_if<pt_is_stl<STL>::value, bool>::type
+		write_field(const STL& data)
 	{
 		if (data.empty())
 			return false;
@@ -303,22 +394,6 @@ private:
 // 解码
 class pt_decoder : public pt_codec
 {
-	inline static int64_t	decodei64(uint64_t n) { return (n >> 1) ^ -(int64_t)(n & 1); }
-	inline static double	decodef64(uint64_t n) { union { double f; uint64_t i; } d; d.i = n; return d.f; }
-	inline static float		decodef32(uint64_t n) { union { float f; uint32_t i; } d; d.i = (uint32_t)n; return d.f; }
-
-	inline static void convert_from(uint64_t n, bool& dst)		{ dst = (n != 0); }
-	inline static void convert_from(uint64_t n, uint8_t& dst)	{ dst = (uint8_t)n; }
-	inline static void convert_from(uint64_t n, uint16_t& dst)	{ dst = (uint16_t)n; }
-	inline static void convert_from(uint64_t n, uint32_t& dst)	{ dst = (uint32_t)n; }
-	inline static void convert_from(uint64_t n, uint64_t& dst)	{ dst = (uint64_t)n; }
-	inline static void convert_from(uint64_t n, int8_t& dst)	{ dst = (int8_t)(uint8_t)n; }
-	inline static void convert_from(uint64_t n, int16_t& dst)	{ dst = (int16_t)decodei64(n); }
-	inline static void convert_from(uint64_t n, int32_t& dst)	{ dst = (int32_t)decodei64(n); }
-	inline static void convert_from(uint64_t n, int64_t& dst)	{ dst = (int64_t)decodei64(n); }
-	inline static void convert_from(uint64_t n, double& dst)	{ dst = decodef64(n); }
-	inline static void convert_from(uint64_t n, float& dst)		{ dst = decodef32(n); }
-	
 public:
 	typedef pt_message* create_cb(unsigned int msgid);
 	pt_decoder(pt_stream* stream) :pt_codec(stream){}
@@ -353,60 +428,29 @@ public:
 	void read_field(pt_message& dst);
 	void read_field(pt_str& dst);
 
-	void read_field(bool& dst)		{ convert_from(m_data, dst); }
-	void read_field(uint8_t& dst)	{ convert_from(m_data, dst); }
-	void read_field(uint16_t& dst)	{ convert_from(m_data, dst); }
-	void read_field(uint32_t& dst)	{ convert_from(m_data, dst); }
-	void read_field(uint64_t& dst)	{ convert_from(m_data, dst); }
-	void read_field(int8_t& dst)	{ convert_from(m_data, dst); }
-	void read_field(int16_t& dst)	{ convert_from(m_data, dst); }
-	void read_field(int32_t& dst)	{ convert_from(m_data, dst); }
-	void read_field(int64_t& dst)	{ convert_from(m_data, dst); }
-	void read_field(double& dst)	{ convert_from(m_data, dst); }
-	void read_field(float& dst)		{ convert_from(m_data, dst); }
-
-	template<typename T> void read_field(std::vector<T>& data)	{ read_stl(data); }
-	template<typename T> void read_field(std::list<T>& data)	{ read_stl(data); }
-	template<typename T> void read_field(std::set<T>& data)		{ read_stl(data); }
-	template<typename U, typename V> void read_field(std::map<U, V>& data) { read_stl(data); }
-	template<typename T> void read_field(pt_num<T>& num) { read_field(num.data); }
-	template<typename T> void read_field(pt_ptr<T>& data)
+	template<typename T>
+	void read_field(pt_ptr<T>& data)
 	{
 		data = new T();
 		read_field(*data);
 	}
-private:
-	template<typename U, typename V>
-	inline void read_field(std::pair<const U, V>& kv)
-	{
-		U* key = const_cast<U*>(&kv.first);
-		read_field(*key);
-		read_field(kv.second);
+
+	template<typename T> 
+	void read_field(pt_num<T>& num) 
+	{ 
+		pt_convert::decode(m_data, num.data);
 	}
 
 	template<typename T>
-	inline void push_back(std::vector<T>& stl, typename std::vector<T>::value_type& t)
+	typename pt_enable_if<pt_is_basic<T>::value>::type
+		read_field(T& dst)
 	{
-		stl.push_back(t);
-	}
-	template<typename T>
-	inline void push_back(std::list<T>& stl, typename std::list<T>::value_type& t)
-	{
-		stl.push_back(t);
-	}
-	template<typename T>
-	inline void push_back(std::set<T>& stl, typename std::set<T>::value_type& t)
-	{
-		stl.insert(t);
-	}
-	template<typename U, typename V>
-	inline void push_back(std::map<U, V>& stl, typename std::map<U, V>::value_type& t)
-	{
-		stl.insert(t);
+		pt_convert::decode(m_data, dst);
 	}
 
 	template<typename STL>
-	inline void read_stl(STL& stl)
+	typename pt_enable_if<pt_is_stl<STL>::value>::type
+		read_field(STL& stl)
 	{
 		if (!m_ext || !m_data)
 			return;
@@ -418,10 +462,52 @@ private:
 		{
 			read_tag();
 			read_field(item);
-			this->push_back(stl, item);
+			pt_push_back(stl, item);
 		}
 		m_stream->recovery(epos);
 		m_tag = old_tag;
+	}
+
+	template<typename U, typename V>
+	inline void read_field(std::pair<const U, V>& kv)
+	{
+		U* key = const_cast<U*>(&kv.first);
+		read_field(*key);
+		read_field(kv.second);
+	}
+
+private:
+	template<typename T>
+	inline void pt_push_back(pt_vec<T>& stl, typename pt_vec<T>::value_type& t)
+	{
+		stl.push_back(t);
+	}
+	template<typename T>
+	inline void pt_push_back(pt_list<T>& stl, typename pt_list<T>::value_type& t)
+	{
+		stl.push_back(t);
+	}
+	template<typename T>
+	inline void pt_push_back(pt_set<T>& stl, typename pt_set<T>::value_type& t)
+	{
+		stl.insert(t);
+	}
+	template<typename T>
+	inline void pt_push_back(pt_hset<T>& stl, typename pt_hset<T>::value_type& t)
+	{
+		stl.insert(t);
+	}
+
+	template<typename U, typename V>
+	inline void pt_push_back(pt_map<U, V>& stl, typename pt_map<U, V>::value_type& t)
+	{
+		stl.insert(t);
+	}
+
+	template<typename U, typename V>
+	inline void pt_push_back(pt_hmap<U, V>& stl, typename pt_hmap<U, V>::value_type& t)
+	{
+		stl.insert(t);
 	}
 
 private:

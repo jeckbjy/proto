@@ -28,8 +28,8 @@ struct Address : public pt_message
 struct Person : public pt_message
 {
 	string	name;
-	vector<Address> addrs;
-	map<pt_s16, Address> addrs_map;
+	pt_vec<Address> addrs;
+	pt_map<pt_s16, Address> addrs_map;
 	
 	void encode(pt_encoder& stream) const
 	{
