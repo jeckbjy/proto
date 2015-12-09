@@ -28,6 +28,9 @@ namespace proto
 
         public object Decode()
         {
+            // clear
+            m_indexs.Clear();
+            //
             long pos = m_stream.Position;
             uint flag = (uint)m_stream.ReadByte();
             uint len1, len2, len3, len;
@@ -48,8 +51,8 @@ namespace proto
                 return null;
             }
             // 校验消息
-            MetaType meta = ModelManager.GetMeta(msg_id);
-            if (meta == null)
+            object msg = ModelManager.Create(msg_id);
+            if(msg == null)
                 return null;
             // 开始解析消息
             pos = m_stream.Position;
@@ -68,20 +71,20 @@ namespace proto
             }
             if(msg_len > 0)
             {// 解析消息
-                ReadPacket(meta, (uint)offset);
+                ReadPacket(msg, (uint)offset);
             }
             // 移动到合适位置,防止有错误消息解析
             m_stream.Seek(pos + msg_len, SeekOrigin.Begin);
 
-            return null;
+            return msg;
         }
 
-        private object ReadPacket(MetaType meta, uint lens)
+        private void ReadPacket(object msg, uint lens)
         {
-            if (!meta.Serializable)
-                return null;
+            MetaType meta = ModelManager.GetMeta(msg.GetType());
+            if (meta == null)
+                return;
             uint field_tag = 0;
-            object msg = meta.Create();
             long epos = m_stream.Position + lens;
             while(m_stream.Position < epos)
             {
@@ -94,7 +97,6 @@ namespace proto
                 object field = ReadField(field_meta.Type);
                 field_meta.SetValue(msg, field);
             }
-            return null;
         }
 
         private object ReadField(Type type)
@@ -119,16 +121,17 @@ namespace proto
                     return null;
                 return stream;
             }
-            else if(type.IsGenericType || type.IsArray)
+            else if(type.IsGenericType)
             {
                 return ReadGeneric(type);
             }
             else if(type.IsClass)
             {// 复杂类型
-                MetaType meta = ModelManager.GetMeta(type);
-                if (meta == null)
+                object msg = ModelManager.Create(type);
+                if (msg == null)
                     return null;
-                ReadPacket(meta, (uint)m_val);
+                ReadPacket(msg, (uint)m_val);
+                return msg;
             }
             return null;
         }
@@ -169,11 +172,12 @@ namespace proto
 
         private object ReadGeneric(Type type)
         {
+            Type type_def = type.IsGenericTypeDefinition ? type : type.GetGenericTypeDefinition();
             // LinkedList:暂时无法支持
             Type[] gen_types = type.GetGenericArguments();
             object container = ModelManager.Create(type);
-            long epos = (long)m_val;
-            if(type == typeof(List<>))
+            long epos = m_stream.Position + (long)m_val;
+            if(type_def == typeof(List<>))
             {
                 IList list = (IList)container; 
                 while(m_stream.Position < epos)
@@ -183,8 +187,9 @@ namespace proto
                     list.Add(val);
                 }
             }
-            else if(type == typeof(Dictionary<,>)||
-                type == typeof(SortedDictionary<,>))
+            else if (
+                type_def == typeof(Dictionary<,>) ||
+                type_def == typeof(SortedDictionary<,>))
             {
                 IDictionary dict = (IDictionary)container;
                 while(m_stream.Position < epos)
@@ -254,7 +259,7 @@ namespace proto
             int shift = 0;
             for(uint i = 0; i < len; ++i)
             {
-                data |= (int)buff[i] << shift;
+                data |= (int)buff[off + i] << shift;
                 shift += 8;
             }
             return (uint)data;

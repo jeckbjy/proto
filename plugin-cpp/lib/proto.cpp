@@ -36,6 +36,7 @@ static bool decode_group_var(uint8_t* buff, uint32_t& data, uint8_t len)
 	return true;
 }
 
+// 统一:0表示结尾
 static size_t encode_var(char* bytes, uint64_t value)
 {
 	size_t count = 0;
@@ -372,6 +373,10 @@ void pt_stream::push_chunk(chunk* block)
 //////////////////////////////////////////////////////////////////////////
 void pt_encoder::encode(pt_message& msg)
 {
+	// clear
+	m_tag = 0;
+	m_stack.clear();
+	m_indexs.clear();
 	// flag:3-3-2
 	// flag(1)+data(4)+index(4)+msgid(4)
 	uint8_t	 flag;
@@ -383,10 +388,11 @@ void pt_encoder::encode(pt_message& msg)
 	ipos = m_stream->cursor();
 	// 写入索引
 	if (m_indexs.size() > 0)
-	{
-		for (IndexVec::iterator itor = m_indexs.begin(); itor != m_indexs.end(); ++itor)
+	{// 从后向前写入
+		for (TagInfoVec::reverse_iterator itor = m_indexs.rbegin(); itor != m_indexs.rend(); ++itor)
 		{
-			write_var(*itor);
+			if (itor->leng > 0)
+				write_var(itor->leng);
 		}
 	}
 	epos = m_stream->cursor();
@@ -402,9 +408,11 @@ void pt_encoder::encode(pt_message& msg)
 	len += len3;
 	flag = (len1 << 5) + (len2 << 2) + len3;
 	buff[0] = flag;
-	m_stream->seek(bpos - len, SEEK_SET);
+	size_t start_pos = bpos - len;
+	m_stream->seek(start_pos, SEEK_SET);
 	m_stream->discard(false);
 	m_stream->write(buff, len);
+	m_stream->seek(start_pos, SEEK_SET);
 }
 
 void pt_encoder::write_tag(size_t tag, uint64_t val, bool ext)
@@ -412,7 +420,7 @@ void pt_encoder::write_tag(size_t tag, uint64_t val, bool ext)
 	// 编码规则:注意：数据区使用加减法，可以优化小数据
 	// 最高位标识类型：0：uint64，1：带有length的复杂类型
 	// 2，3位标识tag,0-2,3标识后边读取,tag至少为1，故可以先减1再保存
-	// 低5位标识数据：0-15直接存储,剩余数据紧随或者放到index中
+	// 0:表示没有数据了，1表示还有数据，低5位标识数据：0-15直接存储,剩余数据紧随或者放到index中
 	assert(tag > 0);
 	tag -= 1;
 	char flag = ext ? MASK_TYPE : 0;
@@ -430,7 +438,7 @@ void pt_encoder::write_tag(size_t tag, uint64_t val, bool ext)
 	// val:存储数据的低4位
 	flag |= (val & 0x0F);
 	val >>= 4;
-	if (val == 0)
+	if (val > 0)
 		flag |= 0x10;
 	// flag+tag+val
 	char buf[20];
@@ -444,26 +452,32 @@ void pt_encoder::write_tag(size_t tag, uint64_t val, bool ext)
 	m_stream->write(buf, len);
 }
 
-void pt_encoder::write_beg(size_t& tpos, size_t& bpos)
+void pt_encoder::write_beg(size_t& index)
 {
-	tpos = m_stream->cursor();
+	index = m_indexs.size();
+	TagInfo info;
+	info.tpos = m_stream->cursor();
 	write_tag(m_tag, 0, true);
-	bpos = m_stream->cursor();
+	info.bpos = m_stream->cursor();
+	info.leng = 0;
+	m_indexs.push_back(info);
 }
 
-void pt_encoder::write_end(size_t& tpos, size_t& bpos)
+void pt_encoder::write_end(size_t index)
 {
+	TagInfo& info = m_indexs[index];
 	size_t epos = m_stream->cursor();
-	size_t leng = epos - bpos;
+	size_t leng = epos - info.bpos;
 	char flag;
-	m_stream->seek(tpos, SEEK_SET);
+	m_stream->seek(info.tpos, SEEK_SET);
 	m_stream->peek(&flag, 1);
 	flag |= (leng & 0x0F);
 	leng >>= 4;
-	if (leng == 0)
+	if (leng > 0)
+	{
 		flag |= 0x10;
-	else
-		m_indexs.push_back(leng);
+		info.leng = leng;
+	}
 	m_stream->write(&flag, 1);
 	m_stream->seek(epos, SEEK_SET);
 }
@@ -484,10 +498,10 @@ void pt_encoder::write_buf(const char* data, size_t len)
 
 bool pt_encoder::write_field(const pt_message& data)
 {
-	size_t tpos, bpos;
-	write_beg(tpos, bpos);
+	size_t index;
+	write_beg(index);
 	data.encode(*this);
-	write_end(tpos, bpos);
+	write_end(index);
 	return true;
 }
 
@@ -495,10 +509,10 @@ bool pt_encoder::write_field(const pt_str& data)
 {
 	if (data.empty())
 		return false;
-	size_t tpos, bpos;
-	write_beg(tpos, bpos);
+	size_t index;
+	write_beg(index);
 	m_stream->write(data.data(), data.size());
-	write_end(tpos, bpos);
+	write_end(index);
 	return true;
 }
 
@@ -521,6 +535,11 @@ bool pt_decoder::decode(create_cb fun)
 }
 bool pt_decoder::decode(pt_message& msg)
 {
+	// 先clear
+	m_tag = 0;
+	m_stack.clear();
+	m_indexs.clear();
+	// 开始解析
 	size_t msg_len = (size_t)m_size;
 	// 头部已经被解析
 	size_t beg_pos = m_stream->cursor();
@@ -638,7 +657,7 @@ bool pt_decoder::read_tag()
 	m_tag += tag + 1;
 	// 解析data
 	m_data = flag & 0x0F;
-	if (!(flag & 0x10))
+	if (flag & 0x10)
 	{// 还有额外数据,两种方式读取
 		uint64_t temp;
 		if (!m_ext)

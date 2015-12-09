@@ -167,6 +167,8 @@ typedef pt_num<unsigned int>		pt_u32;
 typedef pt_num<unsigned long long>	pt_u64;
 typedef pt_num<float>				pt_f32;
 typedef pt_num<double>				pt_f64;
+typedef pt_num<int>					pt_sint;
+typedef pt_num<unsigned int>		pt_uint;
 typedef std::string					pt_str;
 
 class pt_stream;
@@ -288,16 +290,14 @@ class pt_codec
 public:
 	pt_codec(pt_stream* stream) :m_stream(stream), m_tag(0){}
 
-	void beg_tag() { m_stack.push(m_tag); m_tag = 0; }
-	void end_tag() { m_tag = m_stack.top(); m_stack.pop(); }
+	void beg_tag() { m_stack.push_back(m_tag); m_tag = 0; }
+	void end_tag() { m_tag = m_stack.back(); m_stack.pop_back(); }
 
 protected:
-	typedef std::vector<uint64_t> IndexVec;
-	typedef std::stack<int> Stack;
+	typedef std::vector<int> Stack;
 	pt_stream* m_stream;
 	size_t	 m_tag;
 	Stack	 m_stack;
-	IndexVec m_indexs;
 };
 
 // 写入
@@ -326,8 +326,8 @@ public:
 
 public:// 辅助函数
 	void write_tag(size_t tag, uint64_t val, bool ext);
-	void write_beg(size_t& tpos, size_t& bpos);
-	void write_end(size_t& tpos, size_t& bpos);
+	void write_beg(size_t& index);
+	void write_end(size_t  index);
 	void write_buf(const char* data, size_t len);
 	void write_var(uint64_t data);
 
@@ -367,8 +367,8 @@ public:
 		if (data.empty())
 			return false;
 		size_t old_tag;
-		size_t tpos, bpos;
-		write_beg(tpos, bpos);
+		size_t index;
+		write_beg(index);
 		old_tag = m_tag;
 		m_tag = 1;
 		// 写入数据
@@ -379,7 +379,7 @@ public:
 			write_field(*cur_itor);
 		}
 		m_tag = old_tag;
-		write_end(tpos, bpos);
+		write_end(index);
 		return true;
 	}
 
@@ -389,6 +389,16 @@ public:
 		write_field(data.first);
 		write_field(data.second);
 	}
+
+private:
+	struct TagInfo
+	{
+		size_t tpos;
+		size_t bpos;
+		size_t leng;
+	};
+	typedef std::vector<TagInfo> TagInfoVec;
+	TagInfoVec m_indexs;
 };
 
 // 解码
@@ -511,6 +521,8 @@ private:
 	}
 
 private:
+	typedef std::vector<uint64_t> IndexVec;
+	IndexVec m_indexs;
 	uint32_t m_msgid;
 	uint32_t m_offset;
 	bool	 m_ext;

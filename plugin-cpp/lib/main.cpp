@@ -3,71 +3,68 @@
 #include <iostream>
 using namespace std;
 
-struct Address : public pt_message
+struct Person : pt_message
 {
-	pt_s16 id;
-	pt_str	name;
-	Address() :id(0){}
+	pt_s32 id;
+	pt_str name;
+	pt_str addr;
 	void encode(pt_encoder& stream) const
 	{
 		stream.beg_tag();
-		stream << id << name;
-		//stream.write(id).write(name).write(ids);
+		stream << id << name << addr;
 		stream.end_tag();
 	}
-
 	void decode(pt_decoder& stream)
 	{
 		stream.beg_tag();
-		stream >> id >> name;
-		//stream.read(id).read(name).read(ids);
+		stream >> id >> name >> addr;
 		stream.end_tag();
 	}
 };
 
-struct Person : public pt_message
+struct LoginMsg : pt_message
 {
-	string	name;
-	pt_vec<Address> addrs;
-	pt_map<pt_s16, Address> addrs_map;
-	
+	pt_s32 id;
+	pt_str txt;
+	Person info;
+	pt_vec<Person> infos;
+	size_t msgid() const { return 1; }
 	void encode(pt_encoder& stream) const
 	{
 		stream.beg_tag();
-		stream << name << addrs << addrs_map;
+		stream << id << txt << info << infos;
 		stream.end_tag();
 	}
 
 	void decode(pt_decoder& stream)
 	{
 		stream.beg_tag();
-		stream >> name >> addrs >> addrs_map;
+		stream >> id >> txt >> info >> infos;
 		stream.end_tag();
 	}
 };
 
 int main(int argc, char* argv[])
 {
-	Address addr;
-	Person p1, p2;
-	p1.name = "jack";
-	addr.id = 1;
-	addr.name = "tom";
-	p1.addrs.push_back(addr);
-	p1.addrs_map[addr.id] = addr;
-	addr.id = 2;
-	addr.name = "eileen";
-	p1.addrs.push_back(addr);
-	p1.addrs_map[addr.id] = addr;
+	Person person;
+	person.id = 10;
+	person.name = "asrfwerwer";
+	person.addr = "qwerqwrwr";
+	LoginMsg msg;
+	msg.id = 1;
+	msg.txt = "asdfasfwrewerasfsaf";
+	msg.info = person;
+	msg.infos.push_back(person);
 
+	LoginMsg result;
 	pt_stream stream;
 	pt_encoder writer(&stream);
-	writer.encode(p1);
+	writer.encode(msg);
 
 	stream.rewind();
 	pt_decoder reader(&stream);
 	if (reader.pre_decode())
-		reader.decode(p2);
+		reader.decode(result);
 
 	system("pause");
 	return 0;

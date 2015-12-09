@@ -45,13 +45,7 @@ namespace plugin_csharp
 
         public override void WriteStruct(Message msg)
         {
-            if(msg.HasID)
-            {
-                if (!string.IsNullOrEmpty(msg.id_owner))
-                    m_writer.WriteLine("    [ProtoPacket({0}.{1})]", msg.id_owner, msg.id_name);
-                else
-                    m_writer.WriteLine("    [ProtoPacket({0})]", msg.id_name);
-            }
+            m_writer.WriteLine("    [ProtoPacket({0})]", msg.HasID ? msg.GetMsgID(".") : "");
             m_writer.WriteLine("    public struct {0}", msg.name);
             m_writer.WriteLine("    {");
             foreach(var field in msg.fields)

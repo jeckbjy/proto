@@ -26,24 +26,30 @@ namespace proto
     public class ProtoPacketAttribute : Attribute
     {
         private uint msgid;
-        public ProtoPacketAttribute(uint msgid)
+        public ProtoPacketAttribute(uint msgid = uint.MaxValue)
         {
             this.msgid = msgid;
         }
+        public bool HasMsgID { get { return msgid != uint.MaxValue; } }
         public uint MsgID { get { return this.msgid; } }
     }
 
     public class MetaField
     {
         private uint m_tag;
+        private Type m_type;
         private MemberInfo m_info;
         public uint Tag { get { return m_tag; } }
-        public Type Type { get { return m_info.GetType(); } }
+        public Type Type { get { return m_type; } }
 
         public MetaField(uint tag, MemberInfo info)
         {
             this.m_tag = tag;
             this.m_info = info;
+            if (info.MemberType == MemberTypes.Property)
+                m_type = (info as PropertyInfo).PropertyType;
+            else if (info.MemberType == MemberTypes.Field)
+                m_type = (info as FieldInfo).FieldType;
         }
 
         public object GetValue(object obj)
@@ -65,26 +71,18 @@ namespace proto
 
     public class MetaType : IEnumerable
     {
-        public delegate object Creator();
         private bool m_serializable = false;
         private uint m_msgID;
         private Type m_type;
-        private Creator m_func;
         private SortedDictionary<uint, MetaField> m_fields = new SortedDictionary<uint, MetaField>();
 
         public bool Serializable { get { return m_serializable; } }
         public uint MsgID { get { return m_msgID; } }
 
-        public MetaType(Type type, Creator fun)
+        public MetaType(Type type)
         {
             m_type = type;
-            m_func = fun;
             Parse(type, true);
-        }
-
-        public object Create()
-        {
-            return m_func();
         }
 
         public MetaField GetField(uint id)
@@ -110,12 +108,15 @@ namespace proto
             m_msgID = (attrs[0] as ProtoPacketAttribute).MsgID;
             // 解析fields
             BindingFlags flags = publicOnly ? BindingFlags.Public | BindingFlags.Instance : BindingFlags.Public | BindingFlags.Instance | BindingFlags.NonPublic;
-            PropertyInfo[] props = type.GetProperties(flags);
-            FieldInfo[] fields = type.GetFields(flags);
-            MemberInfo[] members = new MemberInfo[fields.Length + props.Length];
-            foreach (var mem in members)
+            AddFields(type.GetProperties(flags));
+            AddFields(type.GetFields(flags));
+        }
+
+        private void AddFields<T>(T[] fields) where T:MemberInfo
+        {
+            foreach(var mem in fields)
             {
-                attrs = mem.GetCustomAttributes(typeof(ProtoFieldAttribute), true);
+                object[] attrs = mem.GetCustomAttributes(typeof(ProtoFieldAttribute), true);
                 if (attrs == null || attrs.Length == 0)
                     continue;
                 ProtoFieldAttribute attr = attrs[0] as ProtoFieldAttribute;
@@ -126,49 +127,59 @@ namespace proto
 
     public static class ModelManager
     {
+        public delegate object Creator();
+        private static Dictionary<uint, Creator> m_msgs = new Dictionary<uint, Creator>();
+        private static Dictionary<Type, Creator> m_types = new Dictionary<Type, Creator>();
         private static Dictionary<Type, MetaType> m_metas = new Dictionary<Type, MetaType>();
-        private static Dictionary<uint, MetaType> m_packets = new Dictionary<uint, MetaType>();
 
         public static MetaType GetMeta(Type type)
         {
             MetaType meta;
             if (!m_metas.TryGetValue(type, out meta))
-                return null;
+            {
+                meta = new MetaType(type);
+                if (meta.Serializable)
+                {
+                    m_metas.Add(type, meta);
+                    return meta;
+                }
+                else
+                {
+                    return null;
+                }
+            }
             return meta;
         }
 
-        public static MetaType GetMeta(uint msgid)
+        public static void Add(Type type, Creator fun)
         {
-            MetaType meta;
-            if (!m_packets.TryGetValue(msgid, out meta))
-                return null;
-            return meta;
-        }
-
-        public static void Add(Type type, MetaType.Creator fun)
-        {
-            MetaType meta = new MetaType(type, fun);
-            m_metas.Add(type, meta);
-            if (meta.MsgID != 0)
-                m_packets.Add(meta.MsgID, meta);
+            m_types.Add(type, fun);
+            // 校验是否是消息
+            object[] attrs = type.GetCustomAttributes(typeof(ProtoPacketAttribute), true);
+            if(attrs.Length > 0)
+            {
+                ProtoPacketAttribute attr = attrs[0] as ProtoPacketAttribute;
+                if (attr.HasMsgID)
+                    m_msgs.Add(attr.MsgID, fun);
+            }
         }
 
         public static object Create(Type type)
         {
-            MetaType meta = GetMeta(type);
-            if (meta == null)
+            Creator fun;
+            if(!m_types.TryGetValue(type, out fun))
             {
                 return Activator.CreateInstance(type);
             }
-            return meta.Create();
+            return fun();
         }
 
         public static object Create(uint msgid)
         {
-            MetaType meta = GetMeta(msgid);
-            if (meta == null)
+            Creator fun;
+            if (!m_msgs.TryGetValue(msgid, out fun))
                 return null;
-            return meta.Create();
+            return fun();
         }
     }
 }
