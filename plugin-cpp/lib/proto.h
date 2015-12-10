@@ -326,10 +326,10 @@ public:
 
 public:// 辅助函数
 	void write_tag(size_t tag, uint64_t val, bool ext);
-	void write_beg(size_t& index);
-	void write_end(size_t  index);
 	void write_buf(const char* data, size_t len);
 	void write_var(uint64_t data);
+	void beg_write(size_t& index);
+	void end_write(size_t  index);
 
 public:
 	bool write_field(const pt_message& data);
@@ -368,7 +368,7 @@ public:
 			return false;
 		size_t old_tag;
 		size_t index;
-		write_beg(index);
+		beg_write(index);
 		old_tag = m_tag;
 		m_tag = 1;
 		// 写入数据
@@ -379,7 +379,7 @@ public:
 			write_field(*cur_itor);
 		}
 		m_tag = old_tag;
-		write_end(index);
+		end_write(index);
 		return true;
 	}
 
@@ -408,9 +408,23 @@ public:
 	typedef pt_message* create_cb(unsigned int msgid);
 	pt_decoder(pt_stream* stream) :pt_codec(stream){}
 
+	uint32_t msgID() const { return m_msgid; }
+	void skip();
+	bool pre_read(size_t tag);
+	bool read_tag();
+	bool read_var(uint64_t& data);
+
 	bool decode(create_cb fun);
 	bool decode(pt_message& msg);
 	bool pre_decode();
+
+public:
+	template<typename T>
+	pt_decoder& operator>>(T& data)
+	{
+		read(data, 1);
+		return *this;
+	}
 
 	template<typename T>
 	pt_decoder& read(T& data, size_t tag = 1)
@@ -420,21 +434,6 @@ public:
 		return *this;
 	}
 
-	template<typename T>
-	pt_decoder& operator>>(T& data) 
-	{
-		read(data, 1);
-		return *this; 
-	}
-
-public:
-	uint32_t msgID() const { return m_msgid; }
-	void skip();
-	bool pre_read(size_t tag);
-	bool read_tag();
-	bool read_var(uint64_t& data);
-
-public:
 	void read_field(pt_message& dst);
 	void read_field(pt_str& dst);
 

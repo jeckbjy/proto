@@ -32,6 +32,7 @@ namespace proto
             {
                 WriteImport(m_proto.Imports[i]);
             }
+            m_writer.WriteLine();
             for (int i = 0; i < m_proto.Messages.Count; ++i)
             {
                 Message msg = m_proto.Messages[i];

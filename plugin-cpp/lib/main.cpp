@@ -10,15 +10,11 @@ struct Person : pt_message
 	pt_str addr;
 	void encode(pt_encoder& stream) const
 	{
-		stream.beg_tag();
 		stream << id << name << addr;
-		stream.end_tag();
 	}
 	void decode(pt_decoder& stream)
 	{
-		stream.beg_tag();
 		stream >> id >> name >> addr;
-		stream.end_tag();
 	}
 };
 
@@ -31,16 +27,12 @@ struct LoginMsg : pt_message
 	size_t msgid() const { return 1; }
 	void encode(pt_encoder& stream) const
 	{
-		stream.beg_tag();
 		stream << id << txt << info << infos;
-		stream.end_tag();
 	}
 
 	void decode(pt_decoder& stream)
 	{
-		stream.beg_tag();
 		stream >> id >> txt >> info >> infos;
-		stream.end_tag();
 	}
 };
 

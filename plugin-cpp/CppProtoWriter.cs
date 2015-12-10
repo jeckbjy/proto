@@ -48,24 +48,25 @@ namespace plugin_cpp
                 if(field.container == Container.NONE)
                 {// 指针
                     if(field.pointer)
-                        m_writer.WriteLine(String.Format("    pt_ptr<{0}> {1};", GetTypeName(field.value), field.name));
+                        m_writer.WriteLine("    pt_ptr<{0}> {1};", GetTypeName(field.value), field.name);
                     else
-                        m_writer.WriteLine(String.Format("    {0} {1};", GetTypeName(field.value), field.name));
+                        m_writer.WriteLine("    {0} {1};", GetTypeName(field.value), field.name);
                 }
                 else if(field.container == Container.MAP || field.container == Container.HASH_MAP)
                 {
-                    m_writer.WriteLine(String.Format("    {0}<{1}, {2}> {3};", GetContainerName(field.container), GetTypeName(field.key), GetTypeName(field.value), field.name));
+                    m_writer.WriteLine("    {0}<{1}, {2}> {3};", GetContainerName(field.container), GetTypeName(field.key), GetTypeName(field.value), field.name);
                 }
                 else
                 {
-                    m_writer.WriteLine(String.Format("    {0}<{1}> {2};", GetContainerName(field.container), GetTypeName(field.value), field.name));
+                    m_writer.WriteLine("    {0}<{1}> {2};", GetContainerName(field.container), GetTypeName(field.value), field.name);
                 }
             }
 
             // msgID
             if(!string.IsNullOrEmpty(msg.id_name))
             {
-                m_writer.WriteLine(String.Format("    size_t msgid() {{ return {0}; }}", msg.id_name));
+                m_writer.WriteLine();
+                m_writer.WriteLine("    size_t msgid() {{ return {0}; }}", msg.id_name);
             }
 
             List<FieldSet> fsets = new List<FieldSet>();
@@ -78,54 +79,52 @@ namespace plugin_cpp
 
         void WriteEncode(List<Field> fields, List<FieldSet> fsets)
         {
+            m_writer.WriteLine();
             m_writer.WriteLine("    void encode(pt_encoder& stream) const");
             m_writer.WriteLine("    {");
             if (fsets.Count > 0)
             {
-                m_writer.WriteLine("        stream.beg_tag();");
                 foreach(var set in fsets)
                 {
                     if(set.streamed)
                     {
                         m_writer.Write("        stream");
                         for (int i = set.beg_index; i <= set.end_index; ++i)
-                            m_writer.Write(String.Format(" << {0}", fields[i].name));
+                            m_writer.Write(" << {0}", fields[i].name);
                         m_writer.WriteLine(";");
                     }
                     else
                     {
                         Field field = fields[set.beg_index];
-                        m_writer.WriteLine(String.Format("        stream.write({0}, {1});", field.name, field.tag));
+                        m_writer.WriteLine("        stream.write({0}, {1});", field.name, field.tag);
                     }
                 }
-                m_writer.WriteLine("        stream.end_tag();");
             }
             m_writer.WriteLine("    }");
         }
 
         void WriteDecode(List<Field> fields, List<FieldSet> fsets)
         {
+            m_writer.WriteLine();
             m_writer.WriteLine("    void decode(pt_decoder& stream)");
             m_writer.WriteLine("    {");
             if (fsets.Count > 0)
             {
-                m_writer.WriteLine("        stream.beg_tag();");
                 foreach (var set in fsets)
                 {
                     if (set.streamed)
                     {
                         m_writer.Write("        stream");
                         for (int i = set.beg_index; i <= set.end_index; ++i)
-                            m_writer.Write(String.Format(" >> {0}", fields[i].name));
+                            m_writer.Write(" >> {0}", fields[i].name);
                         m_writer.Write(";\n");
                     }
                     else
                     {
                         Field field = fields[set.beg_index];
-                        m_writer.WriteLine(String.Format("        stream.read({0}, {1});", field.name, field.tag));
+                        m_writer.WriteLine("        stream.read({0}, {1});", field.name, field.tag);
                     }
                 }
-                m_writer.WriteLine("        stream.end_tag();");
             }
             m_writer.WriteLine("    }");
         }
