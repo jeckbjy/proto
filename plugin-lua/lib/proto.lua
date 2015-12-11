@@ -33,6 +33,38 @@ function pt_enum(tbl, start_index)
 end
 ]]
 
+--- @brief 调试时打印变量的值  
+--- @param data 要打印的字符串  
+--- @param [max_level] table要展开打印的计数，默认nil表示全部展开  
+--- @param [prefix] 用于在递归时传递缩进，该参数不供用户使用于
+function proto_dump(data, level, prefix)
+	if type(prefix) ~= "string" then  
+        prefix = ""  
+    end  
+    if type(data) ~= "table" then  
+        print(prefix .. tostring(data))  
+    else  
+        print(data)  
+        if max_level ~= 0 then  
+            local prefix_next = prefix .. "    "  
+            print(prefix .. "{")  
+            for k,v in pairs(data) do  
+                io.stdout:write(prefix_next .. k .. " = ")  
+                if type(v) ~= "table" or (type(max_level) == "number" and max_level <= 1) then  
+                    print(v)  
+                else  
+                    if max_level == nil then  
+                        var_dump(v, nil, prefix_next)  
+                    else  
+                        var_dump(v, max_level - 1, prefix_next)  
+                    end  
+                end  
+            end  
+            print(prefix .. "}")  
+        end  
+    end
+end
+
 function proto_class(name,super)
 	local cls_meta = {}
 	local cls = setmetatable( { cls_name = name}, cls_meta )
@@ -67,26 +99,40 @@ function Encoder:ctor(stream)
 end
 
 function Encoder:encode(msg)
-    local bpos,ipos,epos;
+    local bpos,ipos,epos
+	local stream = self.stream
     stream:move(20)
+	print("move end",stream:info())
     bpos = stream:cursor()
-    proto_encode_msg(msg)
+    self:write_msg(msg)
     ipos = stream:cursor()
+	print("bpos, ipos", bpos, ipos)
     if #self.indexs > 0 then
-        -- 写入index
+        -- 从后向前写入index
+		local idx_len = #self.indexs
+		for i = idx_len, 1 do
+			local info = self.indexs[i]
+			if info.size > 0 then
+				self:write_var(info.size)
+			end
+		end
     end
     epos = stream:cursor()
     -- 写入头部
-    local buff
-    local len1,len2,len3
-    local len
-    buff = buff .. encode_group_var(epos - bpos)
-    buff = buff .. encode_group_var(epos - ipos)
-    buff = buff .. encode_group_var(msg.proto_id)
-    len = string.len(buff)
-    stream:seek(20 - len)
+	print("pos", epos, bpos, ipos)
+	local b1 = proto.pack_group_var(epos - bpos)
+	local b2 = proto.pack_group_var(epos - ipos)
+	local b3 = proto.pack_group_var(msg.proto_id)
+	flag = (#b1 << 5) + (#b2 << 2) + #b3
+	local len = #b1 + #b2 + #b3 + 1
+	local spos = bpos - len
+    stream:seek(spos, SEEK_SET)
     stream:discard()
-    stream:write(buff, len)
+    stream:write(flag)
+	stream:write(b1)
+	stream:write(b2)
+	stream:write(b3)
+	stream:seek(spos, SEEK_SET)
 end
 
 function Encoder:write_msg(msg)
@@ -114,15 +160,17 @@ function Encoder:check(field, desc)
 	-- 类型
 	local ftype = desc.ftype
 	if proto_is_basic(ftype) then
-		return field ~= 0
-	else ftype == PROTO_STR then
+		return tonumber(field) ~= 0
+	elseif ftype == PROTO_STR then
 		return #field > 0
 	end
 	return true
 end
 
-function Encoder:write_field(tag, field, kind, ftype, ktype)
-    local kind = field_desc.kind
+function Encoder:write_field(tag, field, field_desc)
+	local kind  = field_desc.kind
+	local ftype = field_desc.ftype
+	local ktype = field_desc.ktype
 	if kind == PROTO_NIL then
 		self:write_value(tag, field, ftype)
 	else
@@ -130,16 +178,16 @@ function Encoder:write_field(tag, field, kind, ftype, ktype)
         local index = self:write_beg(tag)
         if kind == PROTO_VEC then
             for i,v in ipairs(field) do
-                self:write_field(1, v, ftype)
+                self:write_value(1, v, ftype)
             end
 		elseif kind == PROTO_SET then
 			for i, v in pairs(field) do
-				self:write_field(1, i, ftype)
+				self:write_value(1, i, ftype)
 			end
         elseif kind == PROTO_MAP then
             for i, v in pairs(field) do
-                self:write_field(1, i, ktype)
-                self:write_field(1, v, ftype)
+                self:write_value(1, i, ktype)
+                self:write_value(1, v, ftype)
             end
         end
         self:write_end(index)
@@ -147,6 +195,7 @@ function Encoder:write_field(tag, field, kind, ftype, ktype)
 end
 
 function Encoder:write_var(val)
+	print("do write var")
 	self.stream:write_var(val)
 end
 
@@ -165,11 +214,9 @@ function Encoder:write_value(tag, field, ftype)
         elseif ftype == PROTO_F64 then
             value = proto.pack_f64(field)
 	    end
-		if tag == 0 then
-			self:write_tag(tag, value, false)
-		else
-			self:write_var(value)
-		end
+		
+		self:write_tag(tag, value, false)
+		--self:write_var(value)
 	else
 		-- 复杂类型
 		local index = self:write_beg(tag)
@@ -178,11 +225,12 @@ function Encoder:write_value(tag, field, ftype)
 		elseif type(ftype) == "table" then
 			self:write_msg(field)
 		end
-		self:write_end(index)
+		self:write_end(index, tag)
 	end
 end
 
 function Encoder:write_tag(tag, val, ext)
+	print("write_tag beg",self.stream:cursor())
     -- flag
     local flag = ext and 0x80 or 0
     -- tag
@@ -195,8 +243,23 @@ function Encoder:write_tag(tag, val, ext)
         tag = tag - 2
     end
     -- val
-    flag |= val & 0x0F
+    flag = flag | (val & 0x0F)
     val = val >> 4
+	if val > 0 then
+		flag = flag | 0x10
+	end
+	-- 写入1个字节
+	--self.stream:info()
+	self.stream:write(flag)
+	--self.stream:info()
+	-- 写入tag，val
+	if tag > 0 then
+		self:write_var(tag)
+	end
+	if val > 0 then
+		self:write_var(val)
+	end
+	print("write_tag end",self.stream:cursor())
 end
 
 function Encoder:write_beg(tag)
@@ -210,6 +273,20 @@ function Encoder:write_beg(tag)
 end
 
 function Encoder:write_end(index)
+	local info = self.indexs[index]
+	local epos = self.stream:cursor()
+	local leng = epos - info.bpos
+	self.stream:seek(info.tpos, SEEK_SET)
+	local flag = self.stream:peek()
+	flag = flag | (leng & 0x0F)
+	leng = leng >> 4
+	-- 还有剩余数据
+	if leng > 0 then
+		flag = flag | 0x10
+		info.size = leng
+	end
+	self.stream.write(flag)
+	self.stream:seek(epos, SEEK_SET)
 end
 
 ---------------------------------------------------------------
@@ -222,29 +299,119 @@ function Decoder:ctor(stream)
 	self.indexs = {}
 end
 
+-- 解析消息
 function Decoder:decode(fun)
+	-- def result
+	local msg
     -- clear
     self.indexs = {}
-    -- read
+    -- read head
+	local stream = self.stream
+	local ok, pkg_len, idx_len, msg_id, msg_len = self:read_head()
+	if ok == false then
+		return nil
+	end
+	-- read body
+	local spos = stream:cursor()
+	local epos = spos + pkg_len
+	local msg_cls = fun(msg_id)
+	if msg_cls ~= nil then
+		-- 先读取index
+		if idx_len > 0 then
+			while stream:cursor() < epos do
+				local val = stream:read_var()
+				if val then
+					table.insert(self.indexs, val)
+				end
+			end
+			stream:seek(spos, SEEK_SET)
+		end
+		-- parse msg
+		msg = self:read_msg(msg_cls, msg_len)
+	end
+	-- 移动到正确位置
+	stream:seek(epos, SEEK_SET)
+	return msg
+end
+
+function Decoder:read_head()
+	local stream = self.stream
+	local spos = stream:cursor()
+	local flag = stream:read()
+	print("flag",flag)
+	local len1 = flag >> 5
+	local len2 = (flag >> 2) & 0x07
+	local len3 = flag & 0x03
+	local leng = len1 + len2 + len3
+	if stream:can_read() < leng then
+		stream:seek(spos, SEEK_SET)
+		return false
+	end
+	local pkg_len = proto.unpack_group_var(stream:read(len1))
+	local idx_len = proto.unpack_group_var(stream:read(len2))
+	local msg_id  = proto.unpack_group_var(stream:read(len3))
+	if stream:can_read() < pkg_len then
+		stream:seek(spos, SEEK_SET)
+		return false
+	end
+	print(pkg_len, idx_len, msg_id, pkg_len - idx_len)
+	return true, pkg_len, idx_len, msg_id, pkg_len - idx_len
 end
 
 function Decoder:read_tag()
-    return 0
+	local tag, val, ext, tmp
+	local flag = self.stream:read()
+	if flag == nil then
+		return nil
+	end
+	ext = (flag & 0x80) ~= 0
+	-- tag
+	tag = flag & 0x60
+	if tag == 3 then
+		tmp = self:read_var()
+		if tmp == nil then
+			return nil
+		end
+		tag = tag + tmp + 2
+	end
+	tag = tag + 1
+	val = flag & 0x0F
+	if (flag & 0x10) ~= 0 then
+		if not ext then
+			tmp = self:read_var()
+		elseif #self.indexs > 0 then 
+			tmp = self.indexs[#self.indexs]
+			table.remove(self.indexs, #self.indexs)
+		end
+		if tmp == nil then
+			return nil
+		end
+		val = tmp << 4 | val
+	end
+    return val, ext, tag
 end
 
-function Decoder:read_msg(msg, len)
+function Decoder:read_msg(msg, msg_len)
     local stream = self.stream
+	local msg_epos = stream:cursor() + msg_len
     local desc = msg.proto_desc
     local field_id = 0
-    local tag, field_desc
-    while not stream:eof() do
-        tag = self:read_tag()
+    local field_desc
+    while stream:cursor() < msg_epos do
+        local val, ext, tag = self:read_tag()
         -- 计算结束位置
+		local epos = stream:cursor()
+		if ext then
+			epos = epos + val
+		end
+		--
         field_id = field_id + tag
         field_desc = desc[field_id]
         if field_desc then
-            msg[field_desc.name] = self:read_field()
+            msg[field_desc.name] = self:read_field(field_desc, val)
         end
+		-- 移动到正确位置，忽略无效字段，并能防止读取错误
+		stream:seek(epos, SEEK_SET)
     end
 end
 
@@ -303,5 +470,5 @@ function Decoder:read_value(ftype, data)
 end
 
 function Decoder:read_var()
-	
+	return self.stream:read_var()
 end

@@ -536,11 +536,11 @@ bool pt_decoder::decode(pt_message& msg)
 	size_t msg_len = (size_t)m_size;
 	// 头部已经被解析
 	size_t beg_pos = m_stream->cursor();
+	size_t end_pos = beg_pos + msg_len;
 	// 先读取index
 	if (m_offset > 0)
 	{
 		uint64_t index;
-		size_t end_pos = beg_pos + msg_len;
 		m_indexs.reserve((msg_len - m_offset) >> 2);
 		m_stream->seek(m_offset, SEEK_CUR);
 		while (m_stream->cursor() < end_pos)
@@ -560,7 +560,7 @@ bool pt_decoder::decode(pt_message& msg)
 		m_stream->recovery(old_epos);
 	}
 	// 移动到正确位置
-	m_stream->seek((long)(beg_pos + m_size), SEEK_SET);
+	m_stream->seek((long)end_pos, SEEK_SET);
 	return true;
 }
 

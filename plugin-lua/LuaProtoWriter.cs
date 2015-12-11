@@ -43,7 +43,7 @@ namespace plugin_lua
                 if (field.deprecated)
                     continue;
                 m_writer.WriteLine(
-                    "    [{0,-2}] = {{ container = {1}, type = {2, -9}, key = {3, -9}, name = \"{4}\", }},",
+                    "    [{0,-2}] = {{ kind = {1}, ftype = {2, -9}, ktype = {3, -9}, name = \"{4}\", }},",
                     field.index, GetContainer(field), GetLuaType(field.value), GetLuaType(field.key), field.name
                     );
             }

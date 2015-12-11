@@ -61,6 +61,7 @@ bool buf_reserve(lbuf_t* buf, size_t len)
 		new_len <<= 1;
 	}
 
+	//printf("reserver beg %d %d %d:\n", buf->spos, buf->cpos, buf->epos);
 	lstr_t* new_block = malloc(sizeof(lstr_t) + new_len);
 	if (!new_block)
 		return false;
@@ -69,13 +70,19 @@ bool buf_reserve(lbuf_t* buf, size_t len)
 	if (!buf_empty(buf))
 		memcpy(new_block->buf, buf_data(buf), buf_size(buf));
 	// 释放并赋值
-	buf_free(buf);
+	if (buf->data && --buf->data->ref == 0)
+		free(buf->data);
+
 	new_block->ref = 1;
 	new_block->len = new_len;
 	buf->data = new_block;
-	buf->epos -= buf->spos;
-	buf->cpos -= buf->spos;
-	buf->spos = 0;
+	if (buf->spos > 0)
+	{
+		buf->epos -= buf->spos;
+		buf->cpos -= buf->spos;
+		buf->spos = 0;
+	}
+	//printf("reserver end %d %d %d:\n", buf->spos, buf->cpos, buf->epos);
 	return true;
 }
 
@@ -113,9 +120,11 @@ void buf_write(lbuf_t* buf, const void* data, size_t len)
 {
 	if (data == 0)
 		return;
+	//printf("write cpos beg: %d\n", buf->cpos);
 	char* ptr = buf_move(buf, len);
 	if (ptr)
 		memcpy(ptr, data, len);
+	//printf("write cpos end: %d\n", buf->cpos);
 }
 
 bool buf_read(lbuf_t* buf, void* data, size_t len)
@@ -124,7 +133,16 @@ bool buf_read(lbuf_t* buf, void* data, size_t len)
 	if (ptr)
 		memcpy(data, ptr, len);
 	return ptr != NULL;
-	return true;
+}
+
+char* buf_peek(lbuf_t* buf, void* data, size_t len)
+{
+	if (len == 0 || buf_can_read(buf) < len)
+		return NULL;
+	char* ptr = buf_cursor(buf);
+	if (data != NULL)
+		memcpy(data, ptr, len);
+	return ptr;
 }
 
 char* buf_move(lbuf_t* buf, size_t len)
@@ -176,9 +194,9 @@ void buf_clear(lbuf_t* buf)
 	buf->spos = buf->cpos = buf->epos = 0;
 }
 
-uint64_t buf_read_var(lbuf_t* buf)
+bool buf_read_var(lbuf_t* buf, uint64_t* data)
 {
-	uint64_t data = 0;
+	data = 0;
 	char off = 0;
 	char tmp;
 	do 
@@ -186,14 +204,14 @@ uint64_t buf_read_var(lbuf_t* buf)
 		if (off >= 64)
 			break;
 		if (!buf_read(buf, &tmp, 1))
-			break;
-		data |= (uint64_t)(tmp & 0x7F) << off;
+			return false;
+		*data |= (uint64_t)(tmp & 0x7F) << off;
 		off += 7;
 	} while (tmp & 0x80);
-	return data;
+	return true;
 }
 
-void buf_write_var(lbuf_t* buf, const uint64_t& value)
+void buf_write_var(lbuf_t* buf, uint64_t value)
 {
 	//高位标识：0表示结尾,1表示后边还有数据
 	char buff[20];
@@ -282,6 +300,8 @@ static int lbuf_write(lua_State* L)
 	int type = lua_type(L, 2);
 	switch (type)
 	{
+	case LUA_TNIL:
+		break;
 	case LUA_TSTRING:
 	{
 		const char* data;
@@ -309,7 +329,8 @@ static int lbuf_write(lua_State* L)
 static int lbuf_read(lua_State* L)
 {
 	lbuf_t* buf = lua_checkbuf(L, 1);
-	if (lua_isnil(L, 2))
+	int params = lua_gettop(L);
+	if (params == 1)
 	{// 无参数时，默认读取一个字节
 		char data;
 		bool ret = buf_read(buf, &data, 1);
@@ -319,7 +340,7 @@ static int lbuf_read(lua_State* L)
 			lua_pushnil(L);
 	}
 	else if (lua_isinteger(L, 2))
-	{// 读取字符串或者buf
+	{// param:len, mode
 		size_t len = (size_t)lua_tointeger(L, 2);
 		const char* data = buf_skip(buf, len);
 		if (data == 0){
@@ -330,19 +351,58 @@ static int lbuf_read(lua_State* L)
 				mode = lua_tostring(L, 3);
 		}
 
-		if (len == 0){
+		const char* mode = "s";
+		if (lua_isstring(L, 3))
+			mode = lua_tostring(L, 3);
+		if (*mode == 's')
+			lua_pushlstring(L, data, len);
+		else if (*mode == 'b')
+			lua_new_buf(L, data, len);
+		else
+			luaL_error(L, "bad read format #3");
+	}
+	else
+	{
+		luaL_error(L, "bad param");
+	}
+
+	return 1;
+}
+
+static int lbuf_peek(lua_State* L)
+{
+	lbuf_t* buf = lua_checkbuf(L, 1);
+	if (lua_isnil(L, 2))
+	{// 无参数时，默认读取一个字节
+		char data;
+		bool ret = buf_peek(buf, &data, 1);
+		if (ret)
+			lua_pushinteger(L, data);
+		else
 			lua_pushnil(L);
-		}else{
+	}
+	else if (lua_isinteger(L, 2))
+	{// 读取字符串或者buf
+		size_t len = (size_t)lua_tointeger(L, 2);
+		const char* data = buf_peek(buf, NULL, len);
+		if (data == 0){
+			lua_pushnil(L);
+		}
+		else{
 			const char* mode = "s";
 			if (lua_isstring(L, 3))
 				mode = lua_tostring(L, 3);
-			if (*mode == 's')
-				lua_pushlstring(L, data, len);
-			else if (*mode == 'b')
-				lua_new_buf(L, data, len);
-			else
-				luaL_error(L, "bad read format #3");
 		}
+
+		const char* mode = "s";
+		if (lua_isstring(L, 3))
+			mode = lua_tostring(L, 3);
+		if (*mode == 's')
+			lua_pushlstring(L, data, len);
+		else if (*mode == 'b')
+			lua_new_buf(L, data, len);
+		else
+			luaL_error(L, "bad read format #3");
 	}
 	else
 	{
@@ -354,8 +414,12 @@ static int lbuf_read(lua_State* L)
 static int lbuf_read_var(lua_State* L)
 {
 	lbuf_t* buf = lua_checkbuf(L, 1);
-	uint64_t n = buf_read_var(buf);
-	lua_pushinteger(L, (lua_Integer)n);
+	uint64_t n;
+	bool ret = buf_read_var(buf, &n);
+	if (ret)
+		lua_pushinteger(L, (lua_Integer)n);
+	else
+		lua_pushnil(L);
 	return 1;
 }
 
@@ -393,7 +457,14 @@ static int lbuf_caps(lua_State* L)
 static int lbuf_size(lua_State* L)
 {
 	lbuf_t* buf = lua_checkbuf(L, 1);
-	lua_pushinteger(L, buf_size(buf));
+	lua_pushinteger(L, (lua_Integer)buf_size(buf));
+	return 1;
+}
+
+static int lbuf_can_read(lua_State* L)
+{
+	lbuf_t* buf = lua_checkbuf(L, 1);
+	lua_pushinteger(L, (lua_Integer)buf_can_read(buf));
 	return 1;
 }
 
@@ -488,7 +559,32 @@ static int lbuf_reserve(lua_State* L)
 static int lbuf_tostring(lua_State* L)
 {
 	lbuf_t* buf = lua_checkbuf(L, 1);
-	lua_pushlstring(L, buf_data(buf), buf_size(buf));
+	if (buf_empty(buf))
+		lua_pushstring(L, "");
+	else
+		lua_pushlstring(L, buf_data(buf), buf_size(buf));
+	return 1;
+}
+
+static int lbuf_tohex(lua_State* L)
+{
+	lbuf_t* buf = lua_checkbuf(L, 1);
+	if (buf_empty(buf)){
+		lua_pushstring(L, "");
+	}else{
+		luaL_Buffer hex_buf;
+		luaL_buffinit(L, &hex_buf);
+		luaL_addlstring(&hex_buf, "0x", 2);
+		char* ptr = buf_data(buf);
+		char* end = ptr + buf_size(buf);
+		char  tmp[3];
+		for (; ptr != end; ++ptr)
+		{
+			snprintf(tmp, 3, "%02x", (uint8_t)*ptr);
+			luaL_addlstring(&hex_buf, tmp, 2);
+		}
+		luaL_pushresult(&hex_buf);
+	}
 	return 1;
 }
 
@@ -506,11 +602,13 @@ static const luaL_Reg buf_reg[] = {
 	{ "__gc",		lbuf_free },
 	{ "__tostring", lbuf_tostring},
 	{ "tostring",	lbuf_tostring },
+	{ "tohex",		lbuf_tohex},
 	{ "new",		lbuf_new },
 	{ "eof",		lbuf_eof },
 	{ "empty",		lbuf_empty },
 	{ "size",		lbuf_size},
-	{ "capacity",	lbuf_caps,},
+	{ "can_read",	lbuf_can_read },
+	{ "capacity",	lbuf_caps},
 	{ "cursor",		lbuf_cursor},
 	{ "position",	lbuf_position},
 	{ "clear",		lbuf_clear},
@@ -520,6 +618,7 @@ static const luaL_Reg buf_reg[] = {
 	{ "seek",		lbuf_seek},
 	{ "write",		lbuf_write},
 	{ "read",		lbuf_read},
+	{ "peek",		lbuf_peek},
 	{ "write_var",  lbuf_write_var},
 	{ "read_var",	lbuf_read_var},
 	{ "move",		lbuf_move},	

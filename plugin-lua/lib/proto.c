@@ -45,6 +45,33 @@ static uint64_t decode_var(const char* buff, size_t len)
 	return data;
 }
 
+static size_t encode_group_var(char* buff, uint32_t data)
+{
+	if (!data)
+		return 0;
+	uint8_t count = 0;
+	while (data > 0)
+	{
+		buff[count++] = (uint8_t)data;
+		data >>= 8;
+	}
+	return count;
+}
+
+static uint32_t deocde_group_var(const char* buff, size_t len)
+{
+	if (len > 4)
+		return 0;
+	uint32_t data = 0;
+	uint8_t off = 0;
+	for (size_t i = 0; i < len; ++i)
+	{
+		data |= buff[i] << off;
+		off += 8;
+	}
+	return data;
+}
+
 //////////////////////////////////////////////////////////////////////////
 // proto encode
 //////////////////////////////////////////////////////////////////////////
@@ -60,7 +87,6 @@ static int pack_u64(lua_State* L)
 {
 	uint64_t n = (uint64_t)lua_tointeger(L, 1);
 	lua_pushinteger(L, (lua_Integer)n);
-	//return pack_var(L, n);
 	return 1;
 }
 
@@ -68,14 +94,12 @@ static int pack_s64(lua_State* L)
 {
 	int64_t n = (int64_t)lua_tointeger(L, 1);
 	lua_pushinteger(L, (lua_Integer)encode_i64(n));
-	//return pack_var(L, encode_i64(n));
 	return 1;
 }
 
 static int pack_f32(lua_State* L)
 {
 	float n = (float)lua_tonumber(L, 1);
-	//return pack_var(L, encode_f32(n));
 	lua_pushinteger(L, (lua_Integer)encode_f32(n));
 	return 1;
 }
@@ -84,7 +108,25 @@ static int pack_f64(lua_State* L)
 {
 	double n = (double)luaL_checknumber(L, 1);
 	lua_pushinteger(L, (lua_Integer)encode_f64(n));
-	//return pack_var(L, encode_f64(n));
+	return 1;
+}
+
+static int pack_group_var(lua_State* L)
+{
+	uint32_t n = (uint32_t)luaL_checkinteger(L, 1);
+	char buff[4];
+	size_t count = encode_group_var(buff, n);
+	//printf("group var:%d,%d\n", n, count);
+	lua_pushlstring(L, buff, count);
+	return 1;
+}
+
+static int unpack_group_var(lua_State* L)
+{
+	size_t len;
+	const char* buff = luaL_checklstring(L, 1, &len);
+	uint32_t data = deocde_group_var(buff, len);
+	lua_pushinteger(L, (lua_Integer)data);
 	return 1;
 }
 
@@ -124,11 +166,13 @@ static const luaL_Reg proto_reg[] = {
 	{ "pack_s64", pack_s64 },
 	{ "pack_f64", pack_f64 },
 	{ "pack_f32", pack_f32 },
+	{ "pack_group_var", pack_group_var },
 
 	{ "unpack_u64", unpack_u64 },
 	{ "unpack_s64", unpack_s64 },
 	{ "unpack_f64", unpack_f64 },
 	{ "unpack_f32", unpack_f32 },
+	{ "unpack_group_var", unpack_group_var },
 
 	{NULL, NULL}
 };
