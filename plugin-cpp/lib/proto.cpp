@@ -435,7 +435,7 @@ void pt_encoder::write_tag(size_t tag, uint64_t val, bool ext)
 		write_var(val);
 }
 
-void pt_encoder::beg_write(size_t& index, size_t tag)
+void pt_encoder::write_beg(size_t& index, size_t tag)
 {
 	index = m_indexs.size();
 	TagInfo info;
@@ -446,7 +446,7 @@ void pt_encoder::beg_write(size_t& index, size_t tag)
 	m_indexs.push_back(info);
 }
 
-void pt_encoder::end_write(size_t& index, size_t tag)
+void pt_encoder::write_end(size_t& index, size_t tag)
 {
 	TagInfo& info = m_indexs[index];
 	size_t epos = m_stream->cursor();
@@ -489,11 +489,11 @@ void pt_encoder::write_buf(const char* data, size_t len)
 bool pt_encoder::write_field(const pt_message& data, size_t tag)
 {
 	size_t index;
-	beg_write(index, tag);
+	write_beg(index, tag);
 	beg_tag();
 	data.encode(*this);
 	end_tag();
-	end_write(index, tag);
+	write_end(index, tag);
 	return true;
 }
 
@@ -502,9 +502,9 @@ bool pt_encoder::write_field(const pt_str& data, size_t tag)
 	if (data.empty())
 		return false;
 	size_t index;
-	beg_write(index, tag);
+	write_beg(index, tag);
 	m_stream->write(data.data(), data.size());
-	end_write(index, tag);
+	write_end(index, tag);
 	return true;
 }
 

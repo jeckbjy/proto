@@ -328,8 +328,8 @@ public:// 辅助函数
 	void write_tag(size_t tag, uint64_t val, bool ext);
 	void write_buf(const char* data, size_t len);
 	void write_var(uint64_t data);
-	void beg_write(size_t& index, size_t tag);
-	void end_write(size_t& index, size_t tag);
+	void write_beg(size_t& index, size_t tag);
+	void write_end(size_t& index, size_t tag);
 
 public:
 	bool write_field(const pt_message& data, size_t tag);
@@ -367,7 +367,7 @@ public:
 		if (data.empty())
 			return false;
 		size_t index;
-		beg_write(index, tag);
+		write_beg(index, tag);
 		// 写入数据
 		typename STL::const_iterator cur_itor;
 		typename STL::const_iterator end_itor = data.end();
@@ -375,7 +375,7 @@ public:
 		{
 			write_field(*cur_itor, 1);
 		}
-		end_write(index, tag);
+		write_end(index, tag);
 		return true;
 	}
 
