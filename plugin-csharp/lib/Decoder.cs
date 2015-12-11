@@ -101,7 +101,11 @@ namespace proto
 
         private object ReadField(Type type)
         {
-            if(type.IsValueType)
+            if(type.IsGenericType)
+            {
+                return ReadGeneric(type);
+            }
+            else if(type.IsValueType)
             {
                 return ReadBasic(type);
             }
@@ -120,10 +124,6 @@ namespace proto
                 if (m_stream.Read(stream.GetBuffer(), 0, (int)m_val) < (int)m_val)
                     return null;
                 return stream;
-            }
-            else if(type.IsGenericType)
-            {
-                return ReadGeneric(type);
             }
             else if(type.IsClass)
             {// 复杂类型

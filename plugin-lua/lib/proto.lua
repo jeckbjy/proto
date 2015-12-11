@@ -146,6 +146,10 @@ function Encoder:write_field(tag, field, kind, ftype, ktype)
 	end
 end
 
+function Encoder:write_var(val)
+	self.stream:write_var(val)
+end
+
 function Encoder:write_value(tag, field, ftype)
 	if proto_is_basic(ftype) then
 		-- 简单类型
@@ -161,7 +165,11 @@ function Encoder:write_value(tag, field, ftype)
         elseif ftype == PROTO_F64 then
             value = proto.pack_f64(field)
 	    end
-        self:write_tag(tag, value, false)
+		if tag == 0 then
+			self:write_tag(tag, value, false)
+		else
+			self:write_var(value)
+		end
 	else
 		-- 复杂类型
 		local index = self:write_beg(tag)

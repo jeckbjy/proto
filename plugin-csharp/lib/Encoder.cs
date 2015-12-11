@@ -103,7 +103,35 @@ namespace proto
         {
             if (obj == null)
                 return false;
-            if(type.IsValueType)
+            if(type.IsGenericType)
+            {// 泛型
+                if ((obj as ICollection).Count == 0)
+                    return false;
+                // 写入tag
+                int index;
+                WriteBegin(tag, out index);
+                // 一个一个写入
+                Type[] gen_types = type.GetGenericArguments();
+                if (gen_types.Length == 1)
+                {
+                    IEnumerator itor = (obj as IEnumerable).GetEnumerator();
+                    while (itor.MoveNext())
+                    {
+                        WriteField(1, gen_types[0], itor.Current);
+                    }
+                }
+                else if (gen_types.Length == 2)
+                {
+                    IDictionaryEnumerator itor = (IDictionaryEnumerator)(obj as IEnumerable).GetEnumerator();
+                    while (itor.MoveNext())
+                    {
+                        WriteField(1, gen_types[0], itor.Key);
+                        WriteField(1, gen_types[1], itor.Value);
+                    }
+                }
+                WriteEnd(index);
+            }
+            else if(type.IsValueType)
             {
                 return WriteBasic(tag, Type.GetTypeCode(type), obj);
             }
@@ -127,34 +155,6 @@ namespace proto
                 WriteBegin(tag, out index);
                 byte[] buff = stream.GetBuffer();
                 m_stream.Write(buff, 0, (int)stream.Length);
-                WriteEnd(index);
-            }
-            else if (type.IsGenericType)
-            {// 泛型
-                if ((obj as ICollection).Count == 0)
-                    return false;
-                // 写入tag
-                int index;
-                WriteBegin(tag, out index);
-                // 一个一个写入
-                Type[] gen_types = type.GetGenericArguments();
-                if (gen_types.Length == 1)
-                {
-                    IEnumerator itor = (obj as IEnumerable).GetEnumerator();
-                    while(itor.MoveNext())
-                    {
-                        WriteField(1, gen_types[0], itor.Current);
-                    }
-                }
-                else if (gen_types.Length == 2)
-                {
-                    IDictionaryEnumerator itor = (IDictionaryEnumerator)(obj as IEnumerable).GetEnumerator();
-                    while(itor.MoveNext())
-                    {
-                        WriteField(1, gen_types[0], itor.Key);
-                        WriteField(1, gen_types[1], itor.Value);
-                    }
-                }
                 WriteEnd(index);
             }
             else if(type.IsClass)
@@ -241,8 +241,8 @@ namespace proto
 
         private void WriteTag(uint tag, ulong val, bool ext)
         {
-            tag -= 1;
             byte flag = (byte)(ext ? 0x80 : 0);
+            tag -= 1;
             if (tag < 3)
             {
                 flag |= (byte)(tag << 5);

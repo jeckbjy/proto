@@ -312,7 +312,7 @@ public:
 	pt_encoder& write(const T& data, size_t tag = 1)
 	{
 		m_tag += tag;
-		if (write_field(data))
+		if (write_field(data, m_tag))
 			m_tag = 0;
 		return *this;
 	}
@@ -328,66 +328,62 @@ public:// 辅助函数
 	void write_tag(size_t tag, uint64_t val, bool ext);
 	void write_buf(const char* data, size_t len);
 	void write_var(uint64_t data);
-	void beg_write(size_t& index);
-	void end_write(size_t  index);
+	void beg_write(size_t& index, size_t tag);
+	void end_write(size_t& index, size_t tag);
 
 public:
-	bool write_field(const pt_message& data);
-	bool write_field(const pt_str& data);
+	bool write_field(const pt_message& data, size_t tag);
+	bool write_field(const pt_str& data, size_t tag);
 
 	template<typename T> 
-	bool write_field(const pt_ptr<T>& ptr) 
+	bool write_field(const pt_ptr<T>& ptr, size_t tag) 
 	{
 		if (ptr)
-			return write_field(*ptr);
+			return write_field(*ptr, tag);
 		return false;
 	}
 
 	template<typename T> 
-	bool write_field(const pt_num<T>& num) 
+	bool write_field(const pt_num<T>& num, size_t tag) 
 	{
-		return write_field(num.data); 
+		return write_field(num.data, tag); 
 	}
 
 	template<typename T>
 	typename pt_enable_if<pt_is_basic<T>::value, bool>::type
-		write_field(const T& data)
+		write_field(const T& data, size_t tag)
 	{
 		uint64_t tmp = pt_convert::encode(data);
 		if (tmp == 0)
 			return false;
-		write_tag(m_tag, tmp, false);
+		write_tag(tag, tmp, false);
 		return true;
 	}
 
 	template<typename STL>
 	typename pt_enable_if<pt_is_stl<STL>::value, bool>::type
-		write_field(const STL& data)
+		write_field(const STL& data, size_t tag)
 	{
 		if (data.empty())
 			return false;
-		size_t old_tag;
 		size_t index;
-		beg_write(index);
-		old_tag = m_tag;
-		m_tag = 1;
+		beg_write(index, tag);
 		// 写入数据
 		typename STL::const_iterator cur_itor;
 		typename STL::const_iterator end_itor = data.end();
 		for (cur_itor = data.begin(); cur_itor != end_itor; ++cur_itor)
 		{
-			write_field(*cur_itor);
+			write_field(*cur_itor, 1);
 		}
-		m_tag = old_tag;
-		end_write(index);
+		end_write(index, tag);
 		return true;
 	}
 
 	template<typename U, typename V> 
-	inline void write_field(const std::pair<U, V>& data)
+	inline void write_field(const std::pair<U, V>& data, size_t tag)
 	{
-		write_field(data.first);
-		write_field(data.second);
+		write_field(data.first, tag);
+		write_field(data.second, tag);
 	}
 
 private:
@@ -411,7 +407,7 @@ public:
 	uint32_t msgID() const { return m_msgid; }
 	void skip();
 	bool pre_read(size_t tag);
-	bool read_tag();
+	bool read_tag(bool use_tag = true);
 	bool read_var(uint64_t& data);
 
 	bool decode(create_cb fun);
@@ -463,18 +459,16 @@ public:
 	{
 		if (!m_ext || !m_data)
 			return;
-		size_t old_tag = m_tag;
 		size_t epos;
 		m_stream->suspend(epos, (size_t)m_size);
 		typename STL::value_type item;
 		while (!m_stream->eof())
 		{
-			read_tag();
+			read_tag(false);
 			read_field(item);
 			pt_push_back(stl, item);
 		}
 		m_stream->recovery(epos);
-		m_tag = old_tag;
 	}
 
 	template<typename U, typename V>

@@ -435,18 +435,18 @@ void pt_encoder::write_tag(size_t tag, uint64_t val, bool ext)
 		write_var(val);
 }
 
-void pt_encoder::beg_write(size_t& index)
+void pt_encoder::beg_write(size_t& index, size_t tag)
 {
 	index = m_indexs.size();
 	TagInfo info;
 	info.tpos = m_stream->cursor();
-	write_tag(m_tag, 0, true);
+	write_tag(tag, 0, true);
 	info.bpos = m_stream->cursor();
 	info.leng = 0;
 	m_indexs.push_back(info);
 }
 
-void pt_encoder::end_write(size_t index)
+void pt_encoder::end_write(size_t& index, size_t tag)
 {
 	TagInfo& info = m_indexs[index];
 	size_t epos = m_stream->cursor();
@@ -486,25 +486,25 @@ void pt_encoder::write_buf(const char* data, size_t len)
 		m_stream->write(data, len);
 }
 
-bool pt_encoder::write_field(const pt_message& data)
+bool pt_encoder::write_field(const pt_message& data, size_t tag)
 {
 	size_t index;
-	beg_write(index);
+	beg_write(index, tag);
 	beg_tag();
 	data.encode(*this);
 	end_tag();
-	end_write(index);
+	end_write(index, tag);
 	return true;
 }
 
-bool pt_encoder::write_field(const pt_str& data)
+bool pt_encoder::write_field(const pt_str& data, size_t tag)
 {
 	if (data.empty())
 		return false;
 	size_t index;
-	beg_write(index);
+	beg_write(index, tag);
 	m_stream->write(data.data(), data.size());
-	end_write(index);
+	end_write(index, tag);
 	return true;
 }
 
@@ -615,6 +615,7 @@ bool pt_decoder::pre_read(size_t tag)
 			return false;
 	}
 
+	// 读取并忽略无效数据
 	while (tag > m_tag)
 	{
 		// skip length content
@@ -629,24 +630,26 @@ bool pt_decoder::pre_read(size_t tag)
 	return true;
 }
 
-bool pt_decoder::read_tag()
+bool pt_decoder::read_tag(bool use_tag)
 {
 	char flag;
-	size_t tag;
 	uint64_t temp;
-
 	if (!m_stream->read(&flag, 1))
 		return false;
 	m_ext = ((flag & MASK_TYPE) != 0);
 	// 解析tag
-	tag = flag & MASK_TAGS;
-	if (tag == 3)
+	if (use_tag)
 	{
-		if (!read_var(temp))
-			return false;
-		tag += (size_t)temp + 2;
+		size_t tag = flag & MASK_TAGS;
+		if (tag == 3)
+		{
+			if (!read_var(temp))
+				return false;
+			tag += (size_t)temp + 2;
+		}
+		tag += 1;
+		m_tag += tag;
 	}
-	m_tag += tag + 1;
 	// 解析data
 	m_data = flag & 0x0F;
 	if (flag & 0x10)

@@ -1,2 +1,8 @@
 /obj
 /bin
+/plugin-lua/lib/bin
+/plugin-lua/lib/obj
+/plugin-csharp/lib/bin
+/plugin-csharp/lib/obj
+/plugin-cpp/lib/bin
+/plugin-cpp/lib/obj
