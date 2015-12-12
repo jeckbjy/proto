@@ -90,140 +90,114 @@ namespace proto
             foreach (KeyValuePair<uint, MetaField> kv in meta)
             {
                 MetaField field = kv.Value;
-                Type ftype = field.Type;
                 object obj = field.GetValue(instance);
                 if (obj == null)
                     continue;
-                if (WriteField(field.Tag - last_tag, field.Type, obj))
+                if(CanWrite(obj))
+                {
+                    WriteField(field.Tag - last_tag, obj);
                     last_tag = field.Tag;
+                }
             }
         }
 
-        private bool WriteField(uint tag, Type type, object obj)
+        private bool CanWrite(object obj)
+        {
+            Type type = obj.GetType();
+            if(type.IsValueType)
+            {
+                ulong data = encode(obj);
+                return data != 0;
+            }
+            else if (type == typeof(string))
+            {
+                if ((obj as string).Length == 0)
+                    return false;
+            }
+            else if (type == typeof(MemoryStream))
+            {
+                if ((obj as MemoryStream).Length == 0)
+                    return false;
+            }
+            else if (type.IsGenericType)
+            {
+                if ((obj as ICollection).Count == 0)
+                    return false;
+            }
+            return true;
+        }
+
+        private bool WriteField(uint tag, object obj)
         {
             if (obj == null)
                 return false;
-            if(type.IsGenericType)
-            {// 泛型
-                if ((obj as ICollection).Count == 0)
-                    return false;
+            Type type = obj.GetType();
+            if(type.IsValueType)
+            {// 普通类型
+                ulong data = encode(obj);
+                WriteTag(tag, data, false);
+                return true;
+            }
+            else
+            {
                 // 写入tag
                 int index;
                 WriteBegin(tag, out index);
+                WriteComplex(type, obj);
+                WriteEnd(index);
+                return true;
+            }
+        }
+
+        private void WriteComplex(Type type, object obj)
+        {
+            if (type.IsGenericType)
+            {
+                int count = type.GetGenericArguments().Length;
                 // 一个一个写入
-                Type[] gen_types = type.GetGenericArguments();
-                if (gen_types.Length == 1)
+                if (count == 1)
                 {
                     IEnumerator itor = (obj as IEnumerable).GetEnumerator();
                     while (itor.MoveNext())
                     {
-                        WriteField(1, gen_types[0], itor.Current);
+                        WriteItem(itor.Current);
                     }
                 }
-                else if (gen_types.Length == 2)
+                else if (count == 2)
                 {
                     IDictionaryEnumerator itor = (IDictionaryEnumerator)(obj as IEnumerable).GetEnumerator();
                     while (itor.MoveNext())
                     {
-                        WriteField(1, gen_types[0], itor.Key);
-                        WriteField(1, gen_types[1], itor.Value);
+                        WriteItem(itor.Key);
+                        WriteItem(itor.Value);
                     }
                 }
-                WriteEnd(index);
             }
-            else if(type.IsValueType)
+            else if(type == typeof(string))
             {
-                return WriteBasic(tag, Type.GetTypeCode(type), obj);
-            }
-            else if (type == typeof(string))
-            {
-                string str = (string)obj;
-                if (str.Length == 0)
-                    return false;
-                int index;
-                WriteBegin(tag, out index);
-                byte[] buff = Encoding.UTF8.GetBytes(str);
+                byte[] buff = Encoding.UTF8.GetBytes(obj as string);
                 m_stream.Write(buff, 0, buff.Length);
-                WriteEnd(index);
             }
-            else if (type == typeof(MemoryStream))
+            else if(type == typeof(MemoryStream))
             {
-                MemoryStream stream = (MemoryStream)obj;
-                if (stream.Length == 0)
-                    return false;
-                int index;
-                WriteBegin(tag, out index);
+                MemoryStream stream = obj as MemoryStream;
                 byte[] buff = stream.GetBuffer();
                 m_stream.Write(buff, 0, (int)stream.Length);
-                WriteEnd(index);
             }
             else if(type.IsClass)
-            {// struct类型
-                MetaType meta = ModelManager.GetMeta(type);
-                if (meta == null)
-                    return false;
-                int index;
-                WriteBegin(tag, out index);
-                WritePacket(meta, obj);
-                WriteEnd(index);
-            }
-            else
             {
-                return false;
+                MetaType meta = ModelManager.GetMeta(type);
+                if (meta != null)
+                    WritePacket(meta, obj);
             }
-
-            return true;
         }
 
-        private bool WriteBasic(uint tag, TypeCode code, object obj)
+        private void WriteItem(object obj)
         {
-            ulong data;
-            switch (code)
-            {
-                case TypeCode.Boolean:
-                    data = (ulong)((bool)obj ? 1 : 0);
-                    break;
-                case TypeCode.Char:
-                    data = (ulong)((byte)(char)obj);
-                    break;
-                case TypeCode.SByte:
-                    data = (ulong)((byte)(sbyte)obj);
-                    break;
-                case TypeCode.Byte:
-                    data = (byte)obj;
-                    break;
-                case TypeCode.UInt16:
-                    data = (ushort)obj;
-                    break;
-                case TypeCode.UInt32:
-                    data = (uint)obj;
-                    break;
-                case TypeCode.UInt64:
-                    data = (ulong)obj;
-                    break;
-                case TypeCode.Int16:
-                    data = encodei64((short)obj);
-                    break;
-                case TypeCode.Int32:
-                    data = encodei64((int)obj);
-                    break;
-                case TypeCode.Int64:
-                    data = encodei64((long)obj);
-                    break;
-                case TypeCode.Single:
-                    data = encodef32((float)obj);
-                    break;
-                case TypeCode.Double:
-                    data = encodef64((double)obj);
-                    break;
-                default:
-                    return false;
-            }
-            if (data == 0)
-                return false;
-            WriteTag(tag, data, false);
-            // 写入
-            return true;
+            if (obj == null)
+                return;
+            // do pack??
+            WriteField(1, obj);
         }
 
         private void WriteVariant(ulong data)
@@ -296,19 +270,64 @@ namespace proto
             m_stream.Seek(epos, SeekOrigin.Begin);
         }
 
-        private static ulong encodei64(long n)
+        private ulong encodei64(long n)
         {
             return (ulong)((n << 1) ^ (n >> 63));
         }
 
-        private static ulong encodef64(double n)
+        private ulong encodef64(double n)
         {
             return (ulong)BitConverter.DoubleToInt64Bits(n);
         }
 
-        private static ulong encodef32(float n)
+        private ulong encodef32(float n)
         {
             return (uint)BitConverter.ToInt32(BitConverter.GetBytes(n), 0);
+        }
+
+        private ulong encode(object obj)
+        {
+            ulong data;
+            TypeCode code = Type.GetTypeCode(obj.GetType());
+            switch (code)
+            {
+                case TypeCode.Boolean:
+                    data = (ulong)((bool)obj ? 1 : 0);
+                    break;
+                case TypeCode.Byte:
+                    data = (byte)obj;
+                    break;
+                case TypeCode.UInt16:
+                    data = (ushort)obj;
+                    break;
+                case TypeCode.UInt32:
+                    data = (uint)obj;
+                    break;
+                case TypeCode.UInt64:
+                    data = (ulong)obj;
+                    break;
+                case TypeCode.SByte:
+                    data = encodei64((sbyte)obj);
+                    break;
+                case TypeCode.Int16:
+                    data = encodei64((short)obj);
+                    break;
+                case TypeCode.Int32:
+                    data = encodei64((int)obj);
+                    break;
+                case TypeCode.Int64:
+                    data = encodei64((long)obj);
+                    break;
+                case TypeCode.Single:
+                    data = encodef32((float)obj);
+                    break;
+                case TypeCode.Double:
+                    data = encodef64((double)obj);
+                    break;
+                default:
+                    return 0;
+            }
+            return data;
         }
     }
 }

@@ -486,7 +486,7 @@ void pt_encoder::write_buf(const char* data, size_t len)
 		m_stream->write(data, len);
 }
 
-bool pt_encoder::write_field(const pt_message& data, size_t tag)
+void pt_encoder::write_field(const pt_message& data, size_t tag)
 {
 	size_t index;
 	write_beg(index, tag);
@@ -494,18 +494,15 @@ bool pt_encoder::write_field(const pt_message& data, size_t tag)
 	data.encode(*this);
 	end_tag();
 	write_end(index, tag);
-	return true;
 }
 
-bool pt_encoder::write_field(const pt_str& data, size_t tag)
+void pt_encoder::write_field(const pt_str& data, size_t tag)
 {
-	if (data.empty())
-		return false;
 	size_t index;
 	write_beg(index, tag);
-	m_stream->write(data.data(), data.size());
+	if(!data.empty())
+		m_stream->write(data.data(), data.size());
 	write_end(index, tag);
-	return true;
 }
 
 //////////////////////////////////////////////////////////////////////////

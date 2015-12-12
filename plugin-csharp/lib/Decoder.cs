@@ -85,29 +85,35 @@ namespace proto
             if (meta == null)
                 return;
             uint field_tag = 0;
+            long field_epos;
             long epos = m_stream.Position + lens;
             while(m_stream.Position < epos)
             {
                 ReadTag();
                 field_tag += m_tag;
+                field_epos = m_stream.Position;
+                if (m_ext)
+                    field_epos += (long)m_val;
                 MetaField field_meta = meta.GetField(field_tag);
-                if (field_meta == null)
-                    continue;
-                // 读取field
-                object field = ReadField(field_meta.Type);
-                field_meta.SetValue(msg, field);
+                if (field_meta != null)
+                {// 读取field
+                    object field = ReadField(field_meta.Type);
+                    field_meta.SetValue(msg, field);
+                }
+                // 忽略并校验位置
+                m_stream.Seek(field_epos, SeekOrigin.Begin);
             }
         }
 
         private object ReadField(Type type)
         {
-            if(type.IsGenericType)
+            if (type.IsValueType)
+            {
+                return decode(type, m_val);
+            }
+            else if (type.IsGenericType)
             {
                 return ReadGeneric(type);
-            }
-            else if(type.IsValueType)
-            {
-                return ReadBasic(type);
             }
             else if(type == typeof(string))
             {
@@ -134,40 +140,6 @@ namespace proto
                 return msg;
             }
             return null;
-        }
-
-        private object ReadBasic(Type type)
-        {
-            TypeCode code = Type.GetTypeCode(type);
-            switch(code)
-            {
-                case TypeCode.Boolean:
-                    return m_val == 1;
-                case TypeCode.Char:
-                    return (char)(byte)m_val;
-                case TypeCode.SByte:
-                    return (sbyte)(byte)m_val;
-                case TypeCode.Byte:
-                    return (byte)m_val;
-                case TypeCode.UInt16:
-                    return (ushort)m_val;
-                case TypeCode.UInt32:
-                    return (uint)m_val;
-                case TypeCode.UInt64:
-                    return m_val;
-                case TypeCode.Int16:
-                    return (short)decodei64(m_val);
-                case TypeCode.Int32:
-                    return (int)decodei64(m_val);
-                case TypeCode.Int64:
-                    return (long)decodei64(m_val);
-                case TypeCode.Single:
-                    return (float)decodef32(m_val);
-                case TypeCode.Double:
-                    return (double)decodef64(m_val);
-                default:
-                    return 0;
-            }
         }
 
         private object ReadGeneric(Type type)
@@ -253,7 +225,7 @@ namespace proto
             return data;
         }
 
-        private static uint decode_group_var(byte[] buff, uint off, uint len)
+        private uint decode_group_var(byte[] buff, uint off, uint len)
         {
             int data = 0;
             int shift = 0;
@@ -265,19 +237,51 @@ namespace proto
             return (uint)data;
         }
 
-        private static long decodei64(ulong n)
+        private long decodei64(ulong n)
         {
             return (long)(n >> 1) ^ (-(long)(n & 1));
         }
 
-        private static double decodef64(ulong n)
+        private double decodef64(ulong n)
         {
             return BitConverter.Int64BitsToDouble((long)n);
         }
 
-        private static float decodef32(ulong n)
+        private float decodef32(ulong n)
         {
             return BitConverter.ToSingle(BitConverter.GetBytes((int)(uint)n), 0);
+        }
+
+        private object decode(Type type, ulong val)
+        {
+            TypeCode code = Type.GetTypeCode(type);
+            switch (code)
+            {
+                case TypeCode.Boolean:
+                    return val == 1;
+                case TypeCode.Byte:
+                    return (byte)val;
+                case TypeCode.UInt16:
+                    return (ushort)val;
+                case TypeCode.UInt32:
+                    return (uint)val;
+                case TypeCode.UInt64:
+                    return (ulong)val;
+                case TypeCode.SByte:
+                    return (sbyte)decodei64(val);
+                case TypeCode.Int16:
+                    return (short)decodei64(val);
+                case TypeCode.Int32:
+                    return (int)decodei64(val);
+                case TypeCode.Int64:
+                    return (long)decodei64(val);
+                case TypeCode.Single:
+                    return (float)decodef32(val);
+                case TypeCode.Double:
+                    return (double)decodef64(val);
+                default:
+                    return 0;
+            }
         }
     }
 }

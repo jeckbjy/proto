@@ -230,7 +230,6 @@ function Encoder:write_value(tag, field, ftype)
 end
 
 function Encoder:write_tag(tag, val, ext)
-	--print("write_tag beg",self.stream:cursor())
     -- flag
     local flag = ext and 0x80 or 0
     -- tag
@@ -249,9 +248,7 @@ function Encoder:write_tag(tag, val, ext)
 		flag = flag | 0x10
 	end
 	-- 写入1个字节
-	--self.stream:info()
 	self.stream:write(flag)
-	--self.stream:info()
 	-- 写入tag，val
 	if tag > 0 then
 		self:write_var(tag)
@@ -259,7 +256,6 @@ function Encoder:write_tag(tag, val, ext)
 	if val > 0 then
 		self:write_var(val)
 	end
-	--print("write_tag end",self.stream:cursor())
 end
 
 function Encoder:write_beg(tag)

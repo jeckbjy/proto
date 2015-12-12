@@ -1,6 +1,6 @@
 #pragma once
 
-#if __cplusplus >= 201103L
+#if __cplusplus >= 201103L || _MSC_VER >= 1700
 #define HAS_CPP11
 #endif
 
@@ -41,6 +41,9 @@ using pt_hmap = std::unordered_map<U, V>;
 template<typename T>
 using pt_hset = std::unordered_set<T>;
 
+template<typename U, typename V>
+using pt_pair = std::pair<U, V>;
+
 #else
 template<typename T>
 class pt_vec : public std::vector<T> {};
@@ -59,6 +62,9 @@ class pt_hmap : public std::hash_map<U, V>{};
 
 template<typename T>
 class pt_hset : public std::hash_set<T>{};
+
+template<typename U, typename V>
+class pt_pair : public std::pair<U, V> {};
 
 #endif
 
@@ -306,66 +312,75 @@ class pt_encoder : public pt_codec
 public:
 	pt_encoder(pt_stream* stream) :pt_codec(stream){}
 
+	void write_var(uint64_t data);
+	void write_buf(const char* data, size_t len);
+	void write_beg(size_t& index, size_t tag);
+	void write_end(size_t& index, size_t tag);
+	void write_tag(size_t tag, uint64_t val, bool ext);
+
 	void encode(pt_message& msg);
+
+public:
+	template<typename T>
+	pt_encoder& operator <<(const T& data)
+	{
+		write(data, 1);
+		return *this;
+	}
 
 	template<typename T>
 	pt_encoder& write(const T& data, size_t tag = 1)
 	{
 		m_tag += tag;
-		if (write_field(data, m_tag))
+		if (can_write(data))
+		{
+			write_field(data, m_tag);
 			m_tag = 0;
+		}
 		return *this;
 	}
 
+	bool can_write(const pt_message&) { return true; }
+	bool can_write(const pt_str& str) { return !str.empty(); }
 	template<typename T>
-	pt_encoder& operator <<(const T& data) 
-	{
-		write(data, 1); 
-		return *this;
-	}
+	bool can_write(const pt_ptr<T>& ptr) { return ptr; }
+	template<typename T>
+	bool can_write(const pt_num<T>& num) { return num != 0; }
+	template<typename T>
+	typename pt_enable_if<pt_is_basic<T>::value,bool>::type
+		can_write(const T& val) { return val; }
+	template<typename T>
+	typename pt_enable_if<pt_is_stl<T>::value, bool>::type
+		can_write(const T& val) { return !val.empty(); }
 
-public:// 辅助函数
-	void write_tag(size_t tag, uint64_t val, bool ext);
-	void write_buf(const char* data, size_t len);
-	void write_var(uint64_t data);
-	void write_beg(size_t& index, size_t tag);
-	void write_end(size_t& index, size_t tag);
-
-public:
-	bool write_field(const pt_message& data, size_t tag);
-	bool write_field(const pt_str& data, size_t tag);
+	void write_field(const pt_message& data, size_t tag);
+	void write_field(const pt_str& data, size_t tag);
 
 	template<typename T> 
-	bool write_field(const pt_ptr<T>& ptr, size_t tag) 
+	void write_field(const pt_ptr<T>& ptr, size_t tag) 
 	{
 		if (ptr)
-			return write_field(*ptr, tag);
-		return false;
+			write_field(*ptr, tag);
 	}
 
 	template<typename T> 
-	bool write_field(const pt_num<T>& num, size_t tag) 
+	void write_field(const pt_num<T>& num, size_t tag) 
 	{
-		return write_field(num.data, tag); 
+		write_field(num.data, tag); 
 	}
 
 	template<typename T>
-	typename pt_enable_if<pt_is_basic<T>::value, bool>::type
+	typename pt_enable_if<pt_is_basic<T>::value>::type
 		write_field(const T& data, size_t tag)
 	{
 		uint64_t tmp = pt_convert::encode(data);
-		if (tmp == 0)
-			return false;
 		write_tag(tag, tmp, false);
-		return true;
 	}
 
 	template<typename STL>
-	typename pt_enable_if<pt_is_stl<STL>::value, bool>::type
+	typename pt_enable_if<pt_is_stl<STL>::value>::type
 		write_field(const STL& data, size_t tag)
 	{
-		if (data.empty())
-			return false;
 		size_t index;
 		write_beg(index, tag);
 		// 写入数据
@@ -373,17 +388,23 @@ public:
 		typename STL::const_iterator end_itor = data.end();
 		for (cur_itor = data.begin(); cur_itor != end_itor; ++cur_itor)
 		{
-			write_field(*cur_itor, 1);
+			write_item(*cur_itor);
 		}
 		write_end(index, tag);
-		return true;
 	}
 
-	template<typename U, typename V> 
-	inline void write_field(const std::pair<U, V>& data, size_t tag)
+private:
+	template<typename T>
+	void write_item(const T& data)
 	{
-		write_field(data.first, tag);
-		write_field(data.second, tag);
+		write_field(data, 1);
+	}
+
+	template<typename U, typename V>
+	void write_item(const pt_pair<U, V>& kv)
+	{
+		write_item(kv.first);
+		write_item(kv.second);
 	}
 
 private:
@@ -464,7 +485,7 @@ public:
 		typename STL::value_type item;
 		while (!m_stream->eof())
 		{
-			read_tag(false);
+			read_tag(true);
 			read_field(item);
 			pt_push_back(stl, item);
 		}
@@ -472,7 +493,7 @@ public:
 	}
 
 	template<typename U, typename V>
-	inline void read_field(std::pair<const U, V>& kv)
+	inline void read_field(pt_pair<const U, V>& kv)
 	{
 		U* key = const_cast<U*>(&kv.first);
 		read_field(*key);

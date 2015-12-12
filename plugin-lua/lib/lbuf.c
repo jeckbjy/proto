@@ -196,7 +196,7 @@ void buf_clear(lbuf_t* buf)
 
 bool buf_read_var(lbuf_t* buf, uint64_t* data)
 {
-	data = 0;
+	*data = 0;
 	char off = 0;
 	char tmp;
 	do 
@@ -372,7 +372,8 @@ static int lbuf_read(lua_State* L)
 static int lbuf_peek(lua_State* L)
 {
 	lbuf_t* buf = lua_checkbuf(L, 1);
-	if (lua_isnil(L, 2))
+	int params = lua_gettop(L);
+	if (params == 1)
 	{// 无参数时，默认读取一个字节
 		char data;
 		bool ret = buf_peek(buf, &data, 1);
@@ -382,13 +383,13 @@ static int lbuf_peek(lua_State* L)
 			lua_pushnil(L);
 	}
 	else if (lua_isinteger(L, 2))
-	{// 读取字符串或者buf
+	{// param:len, mode
 		size_t len = (size_t)lua_tointeger(L, 2);
 		const char* data = buf_peek(buf, NULL, len);
-		if (data == 0){
+		if (data == 0) {
 			lua_pushnil(L);
 		}
-		else{
+		else {
 			const char* mode = "s";
 			if (lua_isstring(L, 3))
 				mode = lua_tostring(L, 3);
@@ -408,6 +409,7 @@ static int lbuf_peek(lua_State* L)
 	{
 		luaL_error(L, "bad param");
 	}
+
 	return 1;
 }
 
