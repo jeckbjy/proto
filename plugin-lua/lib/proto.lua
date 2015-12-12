@@ -102,11 +102,11 @@ function Encoder:encode(msg)
     local bpos,ipos,epos
 	local stream = self.stream
     stream:move(20)
-	print("move end",stream:info())
+	--print("move end",stream:info())
     bpos = stream:cursor()
     self:write_msg(msg)
     ipos = stream:cursor()
-	print("bpos, ipos", bpos, ipos)
+	--print("bpos, ipos", bpos, ipos)
     if #self.indexs > 0 then
         -- 从后向前写入index
 		local idx_len = #self.indexs
@@ -230,7 +230,7 @@ function Encoder:write_value(tag, field, ftype)
 end
 
 function Encoder:write_tag(tag, val, ext)
-	print("write_tag beg",self.stream:cursor())
+	--print("write_tag beg",self.stream:cursor())
     -- flag
     local flag = ext and 0x80 or 0
     -- tag
@@ -259,7 +259,7 @@ function Encoder:write_tag(tag, val, ext)
 	if val > 0 then
 		self:write_var(val)
 	end
-	print("write_tag end",self.stream:cursor())
+	--print("write_tag end",self.stream:cursor())
 end
 
 function Encoder:write_beg(tag)
@@ -311,6 +311,7 @@ function Decoder:decode(fun)
 	if ok == false then
 		return nil
 	end
+	--print("decode",pkg_len, idx_len, msg_id, msg_len)
 	-- read body
 	local spos = stream:cursor()
 	local epos = spos + pkg_len
@@ -338,7 +339,6 @@ function Decoder:read_head()
 	local stream = self.stream
 	local spos = stream:cursor()
 	local flag = stream:read()
-	print("flag",flag)
 	local len1 = flag >> 5
 	local len2 = (flag >> 2) & 0x07
 	local len3 = flag & 0x03
@@ -354,7 +354,6 @@ function Decoder:read_head()
 		stream:seek(spos, SEEK_SET)
 		return false
 	end
-	print(pkg_len, idx_len, msg_id, pkg_len - idx_len)
 	return true, pkg_len, idx_len, msg_id, pkg_len - idx_len
 end
 
@@ -391,7 +390,8 @@ function Decoder:read_tag()
     return val, ext, tag
 end
 
-function Decoder:read_msg(msg, msg_len)
+function Decoder:read_msg(msg_cls, msg_len)
+	local msg = msg_cls.new()
     local stream = self.stream
 	local msg_epos = stream:cursor() + msg_len
     local desc = msg.proto_desc
@@ -413,6 +413,7 @@ function Decoder:read_msg(msg, msg_len)
 		-- 移动到正确位置，忽略无效字段，并能防止读取错误
 		stream:seek(epos, SEEK_SET)
     end
+	return msg
 end
 
 function Decoder:read_field(field_desc, data)
