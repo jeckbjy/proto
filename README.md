@@ -86,3 +86,5 @@ struct LoginMsg = S2C_Login
 - packet（顶层struct）序列化:head+body
 	1. head:flag(3-3-2)+msg_len+idx_len+msgid,flag占用1个字节标识后边每个数据所占用字节数，msg_len,idx_len,msgid使用小端编码
 	2. body:content+index，index由于序列化之前并不知道，故必须放到末尾
+# 计划修改
+为了压缩tag信息，目前编码方式是：flag中高位标识tag信息，低位标识data数据，这样导致了api在的复杂，在将来的开发中可能会改为tag和data完全分离，tag信息合并压缩
