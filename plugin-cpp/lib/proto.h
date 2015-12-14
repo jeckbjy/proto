@@ -271,7 +271,7 @@ struct pt_convert
 	inline static uint64_t encode(const uint16_t& n) { return n; }
 	inline static uint64_t encode(const uint32_t& n) { return n; }
 	inline static uint64_t encode(const uint64_t& n) { return n; }
-	inline static uint64_t encode(const int8_t&  n)  { return (uint8_t)n; }
+	inline static uint64_t encode(const int8_t&  n)  { return encodei64(n); }
 	inline static uint64_t encode(const int16_t& n)  { return encodei64(n); }
 	inline static uint64_t encode(const int32_t& n)  { return encodei64(n); }
 	inline static uint64_t encode(const int64_t& n)  { return encodei64(n); }
@@ -283,7 +283,7 @@ struct pt_convert
 	inline static void decode(uint64_t n, uint16_t& dst){ dst = (uint16_t)n; }
 	inline static void decode(uint64_t n, uint32_t& dst){ dst = (uint32_t)n; }
 	inline static void decode(uint64_t n, uint64_t& dst){ dst = (uint64_t)n; }
-	inline static void decode(uint64_t n, int8_t& dst)	{ dst = (int8_t)(uint8_t)n; }
+	inline static void decode(uint64_t n, int8_t& dst)	{ dst = (int8_t) decodei64(n); }
 	inline static void decode(uint64_t n, int16_t& dst)	{ dst = (int16_t)decodei64(n); }
 	inline static void decode(uint64_t n, int32_t& dst)	{ dst = (int32_t)decodei64(n); }
 	inline static void decode(uint64_t n, int64_t& dst)	{ dst = (int64_t)decodei64(n); }
