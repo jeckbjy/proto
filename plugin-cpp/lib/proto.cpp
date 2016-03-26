@@ -68,6 +68,7 @@ bool pt_stream::peek(void* data, size_t len) const
 		if (count > len)
 			count = len;
 		memcpy(ptr, node->data + offset, count);
+		ptr += count;
 		len -= count;
 
 		offset = 0;
@@ -661,7 +662,7 @@ bool pt_decoder::read_tag(bool use_tag)
 		{
 			if (m_indexs.empty())
 				return false;
-			temp = m_indexs.front();
+			temp = m_indexs.back();
 			m_indexs.pop_back();
 		}
 		m_data = (temp << 4) | m_data;
