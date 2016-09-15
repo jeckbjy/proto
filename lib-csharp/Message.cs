@@ -6,6 +6,7 @@ namespace proto
 {
     interface IMessage
     {
+        uint MsgID { get; }
         void Encode(Encoder encoder);
         void Decode(Decoder decoder);
     }

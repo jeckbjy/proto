@@ -2,7 +2,6 @@
 using System.IO;
 using System.Text;
 using System.Collections;
-using System.Collections.Generic;
 
 namespace proto
 {
@@ -23,7 +22,19 @@ namespace proto
 
         public void Encode(IMessage packet)
         {
+            // 固定长度大小？？
+            long spos = m_stream.Position;
+            byte[] buff = new byte[32];
 
+            packet.Encode(this);
+
+            long leng = m_stream.Position - spos - 32;
+
+            int count = 1;
+            count += EncodeVar(buff, count, (ulong)leng);
+            count += EncodeVar(buff, count, (ulong)packet.MsgID);
+
+            buff[0] = (byte)count;
         }
 
         public Encoder Write<T>(T data, int tagOffset = 1)
