@@ -12,8 +12,8 @@ namespace plugin_csharp
                 case FieldType.BOOL: return "bool";
                 case FieldType.SINT: return "int";
                 case FieldType.UINT: return "uint";
-                case FieldType.SINT8:  return "sbyte";
-                case FieldType.UINT8:  return "byte";
+                case FieldType.SINT8: return "sbyte";
+                case FieldType.UINT8: return "byte";
                 case FieldType.SINT16: return "short";
                 case FieldType.UINT16: return "ushort";
                 case FieldType.SINT32: return "int";
@@ -35,25 +35,25 @@ namespace plugin_csharp
             {
                 case Container.LIST:    // LinkedList:不能实现反射功能
                     //return "LinkedList";
-                case Container.VEC:
+                case Container.VECT:
                     return "List";
                 case Container.MAP:
                     return "SortedDictionary";
-                case Container.HASH_MAP:
+                case Container.HMAP:
                     return "Dictionary";
                 case Container.SET:// 2.0不支持
-                case Container.HASH_SET:
+                case Container.HSET:
                     return "HashSet";
                 default:
                     return "";
             }
         }
 
-        public static string GetFieldType(Field field)
+        public static string GetFieldType(StructField field)
         {
             if (field.container == Container.NONE)
                 return GetDataType(field.value);
-            else if (field.container == Container.MAP || field.container == Container.HASH_MAP)
+            else if (field.container == Container.MAP || field.container == Container.HMAP)
                 return String.Format("{0}<{1}, {2}>", GetContainerType(field.container), GetDataType(field.key), GetDataType(field.value));
             else
                 return String.Format("{0}<{1}>", GetContainerType(field.container), GetDataType(field.value));

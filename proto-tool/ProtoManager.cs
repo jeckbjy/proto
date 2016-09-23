@@ -6,45 +6,9 @@ using System.Collections.Generic;
 
 namespace proto
 {
-    class Target
-    {
-        internal string name;
-        internal string dir { get { return config["dir"]; } }
-        internal Dictionary<string, string> config = new Dictionary<string, string>();
-
-        public void parse(string param)
-        {
-            if(param != null && param.Length != 0)
-            {
-                string[] tokens = param.Split(new char[] { ';' }, StringSplitOptions.RemoveEmptyEntries);
-                foreach (var token in tokens)
-                {
-                    string[] datas = token.Split(new char[] { '=' }, StringSplitOptions.RemoveEmptyEntries);
-                    if (datas.Length != 2)
-                        continue;
-                    config.Add(datas[0], datas[1]);
-                }
-            }
-            if(!config.ContainsKey("dir"))
-            {
-                config.Add("dir", "./");
-            }
-            
-            if(!config["dir"].EndsWith("/"))
-            {
-                config["dir"] = config["dir"] + "/";
-            }
-
-            if(!config.ContainsKey("mgr"))
-            {
-                config.Add("mgr", "PacketFactory");
-            }
-        }
-    }
     class ProtoManager
     {
-        Dictionary<string, IProtoPlugin> m_plugins = new Dictionary<string, IProtoPlugin>();
-        Dictionary<string, Target> m_targets = new Dictionary<string, Target>();
+        Dictionary<string, ProtoPlugin> m_plugins = new Dictionary<string, ProtoPlugin>();
         HashSet<string> m_input = new HashSet<string>();
         List<Proto> m_protos = new List<Proto>();
 
@@ -70,7 +34,7 @@ namespace proto
                 {
                     if (t.GetInterface("IProtoPlugin") != null)
                     {
-                        var plugin = (IProtoPlugin)Activator.CreateInstance(t);
+                        var plugin = (ProtoPlugin)Activator.CreateInstance(t);
                         m_plugins.Add(plugin.Target, plugin);
                     }
                 }
@@ -92,15 +56,15 @@ namespace proto
                     }
                     else if (reader.Name == "target")
                     {
-                        Target target = new Target();
-                        target.name = reader.GetAttribute("name");
-                        string param = reader.GetAttribute("param");
-                        string dir = reader.GetAttribute("dir");
-                        if (dir != null)
-                            target.config["dir"] = dir;
-                        target.parse(param);
-                        if (target.name != null)
-                            m_targets.Add(target.name, target);
+                        string name = reader.GetAttribute("name");
+                        if(m_plugins.ContainsKey(name))
+                        {
+                            ProtoPlugin plugin = m_plugins[name];
+
+                            plugin.OutputDir = reader.GetAttribute("dir");
+                            plugin.ManagerName = reader.GetAttribute("manager");
+                            plugin.SetCheckWriteTime(reader.GetAttribute("check"));
+                        }
                     }
                 }
             }
@@ -116,15 +80,17 @@ namespace proto
         {
             if (m_input.Count == 0)
                 m_input.Add("./proto/");
+
+            ProtoParser parser = new ProtoParser();
             foreach (var path in m_input)
             {
                 DirectoryInfo di = new DirectoryInfo(path);
                 FileInfo[] files = di.GetFiles("*.proto");
                 for (int i = 0; i < files.Length; ++i)
                 {
-                    Proto proto = new Proto(files[i].FullName);
-                    proto.Parse();
-                    m_protos.Add(proto);
+                    Proto proto = parser.Parse(files[i].FullName);
+                    if (proto != null)
+                        m_protos.Add(proto);
                 }
             }
             Check();
@@ -134,22 +100,23 @@ namespace proto
         void Check()
         {
             // 所有结构体或者enum,不能有重名
-            Dictionary<string, Message> blocks = new Dictionary<string, Message>();
+            Dictionary<string, Scope> blocks = new Dictionary<string, Scope>();
             Dictionary<string, string> enum_fields = new Dictionary<string, string>();
             // 先统计信息
             foreach(var proto in m_protos)
             {
-                foreach(var msg in proto.Messages)
+                foreach(var msg in proto.Scopes)
                 {
                     if (blocks.ContainsKey(msg.name))
                         throw new Exception(String.Format("duplicate name[{0}] in file[{1}]", msg.name, proto.Name));
                     blocks.Add(msg.name, msg);
 
-                    if(msg.type == CmdType.ENUM)
-                    {// 要求field名字不能重复
-                        foreach (var field in msg.fields)
+                    if(msg is EnumScope)
+                    {// 要求enum field名字不能重复
+                        EnumScope enumScope = msg as EnumScope;
+                        foreach (var field in enumScope.fields)
                         {
-                            if(enum_fields.ContainsKey(field.name))
+                            if (enum_fields.ContainsKey(field.name))
                                 throw new Exception(String.Format("duplicate enum field name[{0}] in file[{1}]", field.name, proto.Name));
                             enum_fields.Add(field.name, msg.name);
                         }
@@ -160,24 +127,28 @@ namespace proto
             // 校验ID和名字
             foreach(var proto in m_protos)
             {
-                foreach(var msg in proto.Messages)
+                foreach(var scope in proto.Scopes)
                 {
-                    if(msg.type == CmdType.STRUCT)
+                    if (!(scope is StructScope))
+                        continue;
+
+                    StructScope msg = scope as StructScope;
+
+                    if (msg.HasID && enum_fields.ContainsKey(msg.id_name))
                     {
-                        if(msg.HasID && enum_fields.ContainsKey(msg.id_name))
-                        {
-                            msg.id_owner = enum_fields[msg.id_name];
-                        }
-                        // 校验field
-                        foreach(var field in msg.fields)
-                        {
-                            if(field.value.type == FieldType.STRUCT)
-                            {
-                                Message block = blocks[field.value.name];
-                                if (block == null || block.type != CmdType.STRUCT)
-                                    throw new Exception(String.Format("cannot find field in struct[{0}]", msg.name));
-                            }
-                        }
+                        msg.id_owner = enum_fields[msg.id_name];
+                    }
+
+                    // 校验field
+                    foreach (StructField field in msg.fields)
+                    {
+                        if (field.value_type != FieldType.STRUCT)
+                            continue;
+
+                        if (blocks.ContainsKey(field.value_name))
+                            throw new Exception(String.Format("cannot find field in struct[{0}]", msg.name));
+
+                        // 校验proto包含关系
                     }
                 }
             }
@@ -185,31 +156,21 @@ namespace proto
 
         void Output()
         {
-            foreach (var kv in m_targets)
+            foreach(var kv in m_plugins)
             {
-                Target target = kv.Value;
-                var plugin = m_plugins[kv.Key];
-                if (plugin == null)
-                    continue;
-                target.config["ext"] = plugin.Extension;
-                IProtoWriter writer = plugin.CreateProtoWriter();
-                //  创建目录
-                if (!Directory.Exists(target.dir))
+                ProtoPlugin plugin = kv.Value;
+                
+                if(!Directory.Exists(plugin.OutputDir))
                 {
-                    Directory.CreateDirectory(target.dir);
-                }
-                // 输出每个文件
-                foreach (var proto in m_protos)
-                {
-                    writer.Write(proto, target.config);
+                    Directory.CreateDirectory(plugin.OutputDir);
                 }
 
-                // 输出Manager
-                IManagerWriter manager_writer = plugin.CreateManagerWriter();
-                if (manager_writer != null)
+                foreach(var proto in m_protos)
                 {
-                    manager_writer.Write(m_protos, target.config);
+                    plugin.WriteProto(proto);
                 }
+
+                plugin.WriteManager(m_protos);
             }
         }
     }

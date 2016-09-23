@@ -37,8 +37,6 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="CppPlugin.cs" />
-    <Compile Include="CppProtoWriter.cs" />
-    <Compile Include="CppManagerWriter.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>

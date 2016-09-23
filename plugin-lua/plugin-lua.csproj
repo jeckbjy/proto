@@ -36,9 +36,7 @@
     <Reference Include="System" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="LuaManagerWriter.cs" />
     <Compile Include="LuaPlugin.cs" />
-    <Compile Include="LuaProtoWriter.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>

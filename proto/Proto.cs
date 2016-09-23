@@ -29,31 +29,16 @@ namespace proto
     {
         NONE,
         LIST,
-        VEC,
+        VECT,
+        HMAP,   // hash_map
+        HSET,   // hash_set
         MAP,
         SET,
-        HASH_MAP,
-        HASH_SET,
     }
 
-    public enum CmdType
+    public static class Util
     {
-        UNKNOWN,    // 未知类型
-        ENUM,       // 枚举
-        STRUCT,     // 结构体
-    }
-
-    public struct TypeInfo
-    {
-        public string name;
-        public FieldType type;
-        public void SetName(string name)
-        {
-            this.name = name;
-            this.type = ParseType(name);
-        }
-
-        public static FieldType ParseType(string str)
+        public static FieldType GetValueType(string str)
         {
             switch (str)
             {
@@ -76,117 +61,177 @@ namespace proto
                 case "float32": return FieldType.FLOAT32;
                 case "double":  return FieldType.FLOAT64;
                 case "float64": return FieldType.FLOAT64;
-                case "string": return FieldType.STRING;
-                case "blob": return FieldType.BLOB;
-                default: return FieldType.STRUCT;
+                case "string":  return FieldType.STRING;
+                case "blob":    return FieldType.BLOB;
+                default:        return FieldType.STRUCT;
             }
+        }
+
+        public static Container GetContainerType(string str)
+        {
+            switch (str)
+            {
+                case "list":    return Container.LIST;
+                case "vect":    return Container.VECT;
+                case "vector":  return Container.VECT;
+                case "map":     return Container.MAP;
+                case "set":     return Container.SET;
+                case "hmap":    return Container.HMAP;
+                case "hset":    return Container.HSET;
+                case "hash_map":return Container.HMAP;
+                case "hash_set":return Container.HSET;
+                default:        return Container.NONE;
+            }
+        }
+    }
+
+    public class TypeInfo
+    {
+        public string name;
+        public FieldType type;
+
+        public bool IsStruct
+        {
+            get { return type == FieldType.STRUCT; }
+        }
+
+        public void SetName(string name)
+        {
+            this.name = name;
+            this.type = Util.GetValueType(name);
         }
     }
 
     public class Field
     {
         public string name;
-        public uint index = UInt32.MaxValue;    // 唯一索引
-        // struct info
-        public uint tag = 0;
-        public TypeInfo key;
-        public TypeInfo value;
-        public Container container = Container.NONE;
-        public bool pointer = false;    // 是否是指针,c++中构造析构
-        public bool deprecated = false; // 是否废弃
+        public int index = Int32.MaxValue;
+    }
 
-        internal int tokenSize
+    public class Scope
+    {
+        public string name;
+        public virtual void Process() { }
+    }
+
+    //
+    public class EnumScope : Scope
+    {
+        public List<Field> fields = new List<Field>();
+        public int maxWidth = 0;
+
+        public bool Empty
         {
-            get
-            {
-                switch(container)
-                {
-                    case Container.NONE: return 2;
-                    case Container.MAP:
-                    case Container.HASH_MAP:
-                        return 4;
-                    default:
-                        return 3;
-                }
-            }
+            get { return fields.Count == 0; }
         }
 
-        public static Container ParseContainer(string str)
+        public void AddField(Field field)
         {
-            switch(str)
+            this.fields.Add(field);
+        }
+
+        public override void Process()
+        {
+            if (fields.Count == 0)
+                return;
+
+            maxWidth = 0;
+            // 默认从1开始,而且如果是struct，index必须大于0
+            if (fields[0].index == Int32.MaxValue)
+                fields[0].index = 1;
+            // 自动累加索引
+            for (int i = 1; i < fields.Count; ++i)
             {
-                case "list": return Container.LIST;
-                case "vector": return Container.VEC;
-                case "vec": return Container.VEC;
-                case "map": return Container.MAP;
-                case "set": return Container.SET;
-                case "hash_map":return Container.HASH_MAP;
-                case "hash_set":return Container.HASH_SET;
-                default:return Container.NONE;
+                if (fields[i].name.Length > maxWidth)
+                    maxWidth = fields[i].name.Length;
+
+                if (fields[i].index == Int32.MaxValue)
+                    fields[i].index = fields[i - 1].index + 1;
             }
         }
     }
 
-    // enum or struct
-    public class Message
+    // 结构体类型
+    public class StructField : Field
     {
-        public CmdType type = CmdType.UNKNOWN;
-        public string name;
-        public string id_name;   // 唯一id，可以是数字，或者是unique
+        public uint tag = 0;            // index偏移
+
+        public Container container = Container.NONE;
+        public TypeInfo key;
+        public TypeInfo value;
+        public bool pointer = false;    // 是否是指针
+        public bool deprecated = false; // 是否废弃
+    }
+
+    public class StructScope : Scope
+    {
+        public string id_name;   // 唯一id，可以是数字，或者是unique enum
         public string id_owner;
-        public List<Field> fields = new List<Field>();
+
+        public List<StructField> fields = new List<StructField>();
 
         public bool HasID
         {
             get { return !string.IsNullOrEmpty(id_name); }
         }
 
-        public bool IsEnum { get { return type == CmdType.ENUM; } }
-        public bool IsStruct { get { return type == CmdType.STRUCT; } }
-
         public string GetMsgID(string split)
         {
-            if (string.IsNullOrEmpty(split) || string.IsNullOrEmpty(id_owner))
-                return id_name;
-            return id_owner + split + id_name;
+            return String.Format("{0}{1}{2}", id_owner, split, id_name);
         }
 
-        internal void process()
+        public string GetID(string interval)
+        {
+            if (HasID)
+            {
+                if (string.IsNullOrEmpty(id_owner))
+                    return id_name;
+                else
+                    return id_owner + interval + id_name;
+            }
+            else
+            {
+                return string.Empty;
+            }
+        }
+
+        public void AddField(StructField field)
+        {
+            fields.Add(field);
+        }
+
+        public override void Process()
         {
             if (fields.Count == 0)
                 return;
             // 默认从1开始,而且如果是struct，index必须大于0
-            if (fields[0].index == UInt32.MaxValue)
+            if (fields[0].index == Int32.MaxValue)
                 fields[0].index = 1;
             // 自动累加索引
             for (int i = 1; i < fields.Count; ++i)
             {
-                if (fields[i].index == UInt32.MaxValue)
+                if (fields[i].index == Int32.MaxValue)
                     fields[i].index = fields[i - 1].index + 1;
             }
+
             // 保证递增性
-            if (type == CmdType.STRUCT)
+            for (int i = 1; i < fields.Count; ++i)
             {
-                if (fields[0].index == 0)
-                    throw new Exception("struct index must start from 1,cannot equal 0");
-                for (int i = 1; i < fields.Count; ++i)
-                {
-                    if (fields[i].index <= fields[i - 1].index)
-                        throw new Exception("struct index must be increase");
-                }
+                if (fields[i].index <= fields[i - 1].index)
+                    throw new Exception("struct index must be increase");
             }
             // 计算tag,即偏移
-            Field field;
-            uint index = 0;
-            for(int i = 0; i < fields.Count; ++i)
+            StructField field;
+            int index = 0;
+            for (int i = 0; i < fields.Count; ++i)
             {
                 field = fields[i];
                 if (field.deprecated)
                     continue;
-                field.tag = field.index - index;
+                field.tag = (uint)(field.index - index);
                 index = field.index;
                 if (field.tag == 0)
-                    throw new Exception("bad tag");
+                    throw new Exception("bad struct tag");
             }
         }
     }
@@ -224,18 +269,24 @@ namespace proto
      *      string  name;
      *      int     ivalue;
      *      uint    uvalue=10;
-     *      delete vector<int> aa;
+     *      vector<int> aa;
      *      map<int,string> bb;
-     *      hash_map<int, Person> cc;
+     *      hmap<int, Person> cc;
      * }
      */
     public class Proto
     {
-        string m_name;      // 不含路径
-        string m_path;      // 文件路径
-        bool m_hasPacket;   // 是否含有packet判断标准是id不为空
-        List<String>  m_imports = new List<string>();       // 注意不包含proto后缀
-        List<Message> m_messages = new List<Message>();
+        DateTime m_lastTime;        // 上次访问时间
+        string m_name;              // 不含路径
+        string m_path;              // 文件路径
+        bool m_hasPacket = false;   // 是否含有packet判断标准是id不为空
+        List<String> m_imports = new List<string>();       // 注意不包含proto后缀
+        List<Scope>  m_scopes = new List<Scope>();
+
+        public DateTime LastWriteTime
+        {
+            get { return m_lastTime; }
+        }
 
         public string Name
         {
@@ -253,156 +304,31 @@ namespace proto
         }
 
         public List<String> Imports { get { return m_imports; } }
-        public List<Message> Messages { get { return m_messages; } }
+        public List<Scope>  Scopes { get { return m_scopes; } }
 
         public Proto(string path)
         {
             this.m_path = path;
             this.m_name = Path.GetFileNameWithoutExtension(path);
+            FileInfo fi = new FileInfo(m_path);
+            m_lastTime = fi.LastWriteTime;
         }
 
-        public void Parse()
+        public void AddImport(string import)
         {
-            ProtoReader reader = new ProtoReader(m_path);
-            while(!reader.EndOfStream)
-            {
-                string cmd = reader.ReadLine();
-                if (cmd.Length == 0)
-                    continue;
-                if(cmd.StartsWith("import "))
-                {
-                    int start = cmd.IndexOf('\"', 7);
-                    int end = cmd.LastIndexOf('\"');
-                    if (start == -1 || end == -1)
-                        throw new Exception("bad import" + reader.Line + cmd);
-                    string file = cmd.Substring(start + 1, end - start - 1);
-                    if (!file.EndsWith(".proto"))
-                        throw new Exception(String.Format("import must end with .proto in line{0} of file{1}", reader.Line, m_path));
-                    file = file.Remove(file.Length - 6);
-                    m_imports.Add(file);
-                    continue;
-                }
-                // 数据结构处理
-                string[] tokens = cmd.Split(new char[]{ ' '}, StringSplitOptions.RemoveEmptyEntries);
-                CmdType type = CmdType.UNKNOWN;
-                switch(tokens[0])
-                {
-                    case "enum":type = CmdType.ENUM;break;
-                    case "struct":type = CmdType.STRUCT;break;
-                    default:
-                        throw new Exception("unknow cmd line =" + reader.Line + ":cmd =" + cmd);
-                }
-                if (tokens.Length != 2 && tokens.Length != 4)
-                    throw new Exception("bad message" + reader.Line + cmd);
-                Message message = new Message();
-                m_messages.Add(message);
-                message.type = type;
-                message.name = tokens[1];
-                if(tokens.Length == 4)
-                {
-                    if(tokens[2] != "=")
-                        throw new Exception("bad message" + reader.Line + cmd);
-                    message.id_name = tokens[3];
-                }
-                ParseFields(message, reader);
-                message.process();
-                Process();
-            }
+            m_imports.Add(import);
         }
 
-        private void Process()
+        public void AddScope(Scope scope)
         {
-            m_hasPacket = false;
-            foreach(var msg in m_messages)
+            scope.Process();
+            m_scopes.Add(scope);
+            if(scope is StructScope)
             {
-                if(msg.HasID)
-                {
+                StructScope structScope = scope as StructScope;
+                if (structScope.HasID)
                     m_hasPacket = true;
-                    break;
-                }
             }
-        }
-
-        private void ParseFields(Message message, ProtoReader reader)
-        {
-            string data = reader.ReadLine();
-            if (data != "{")
-                throw new Exception("message must start {");
-            while(true)
-            {
-                if (reader.EndOfStream)
-                    throw new Exception("not find }");
-                data = reader.ReadLine();
-                if (data == "}")
-                    break;
-                Field field;
-                switch(message.type)
-                {
-                    case CmdType.ENUM: field = ParseEnumField(data, reader.Line); break;
-                    case CmdType.STRUCT: field = ParseStructField(data, reader.Line); break;
-                    default:
-                        throw new Exception("unknow msg type");
-                }
-
-                message.fields.Add(field);
-            }
-        }
-
-        private Field ParseEnumField(string data, int line)
-        {
-            Field field = new Field();
-            string[] tokens = data.Split(new char[] { '=' }, StringSplitOptions.RemoveEmptyEntries);
-            if (tokens.Length == 0 || tokens.Length > 2)
-                throw new Exception("bad enum field" + line + data);
-
-            field.name = tokens[0].Trim();
-            if(tokens.Length == 2)
-                field.index = UInt32.Parse(tokens[1]);
-
-            return field;
-        }
-
-        private Field ParseStructField(string data, int line)
-        {
-            Field field = new Field();
-            string[] tokens;
-            // (deprecated) (container)type name (= index)
-            string type_name;
-            if (data.IndexOf('=') != -1)
-            {
-                tokens = data.Split(new char[] { '=' }, StringSplitOptions.RemoveEmptyEntries);
-                field.index = UInt32.Parse(tokens[1]);
-                type_name = tokens[0].Trim();
-            }
-            else
-            {
-                type_name = data;
-            }
-            // check deprecated
-            if(type_name.StartsWith("deprecated "))
-            {
-                field.deprecated = true;
-                type_name = type_name.Substring("deprecated ".Length);
-            }
-            // parse type name
-            int index = type_name.LastIndexOf('*');
-            if (index != -1)
-                field.pointer = true;
-            // 解析类型和name,最后一个必然是name
-            tokens = type_name.Split(new char[] { ' ', '<', ',', '>', '*', ':' }, StringSplitOptions.RemoveEmptyEntries);
-            if (tokens.Length < 2)
-                throw new Exception("bad field");
-            field.container = Field.ParseContainer(tokens[0]);
-            if(tokens.Length != field.tokenSize)
-                throw new Exception("bad field");
-            field.name = tokens[tokens.Length - 1];
-            field.value.SetName(tokens[tokens.Length - 2]);
-            if(field.container == Container.MAP || field.container == Container.HASH_MAP)
-            {
-                field.key.SetName(tokens[1]);
-            }
-
-            return field;
         }
     }
 }
