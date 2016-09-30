@@ -38,9 +38,6 @@
   <ItemGroup>
     <Compile Include="CSharpFormat.cs" />
     <Compile Include="CSharpPlugin.cs" />
-    <Content Include="lib\ModelManager.cs" />
-    <Content Include="lib\Decoder.cs" />
-    <Content Include="lib\Encoder.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>

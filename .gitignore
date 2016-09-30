@@ -6,3 +6,9 @@
 /plugin-csharp/lib/obj
 /plugin-cpp/lib/bin
 /plugin-cpp/lib/obj
+/lib-cpp/obj
+/lib-cpp/bin
+/lib-csharp/obj
+/lib-csharp/bin
+/lib-lua/bin
+/lib-lua/obj
